@@ -1,0 +1,1573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MRANTI Park Puzzle Race</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PeerJS for direct WebRTC multiplayer on GitHub Pages -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    colors: {
+                        mranti: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            700: '#0f766e',
+                            900: '#134e4a',
+                            dark: '#081c1c'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: radial-gradient(circle at top center, #0f2b2b, #051010 80%);
+            color: #f1f5f9;
+            min-height: 100vh;
+            user-select: none;
+        }
+
+        /* Glassmorphism styling */
+        .glass-card {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(20, 184, 166, 0.2);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.65);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        /* Puzzle Board */
+        #puzzle-board {
+            display: grid;
+            position: relative;
+            background: #020617;
+            border-radius: 12px;
+            box-shadow: 0 0 35px rgba(20, 184, 166, 0.25);
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        .puzzle-piece {
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.15s ease, filter 0.15s ease, border-color 0.15s ease;
+            box-sizing: border-box;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background-repeat: no-repeat;
+        }
+
+        .puzzle-piece:hover {
+            filter: brightness(1.15);
+            z-index: 10;
+            border-color: #2dd4bf;
+        }
+
+        .puzzle-piece.selected {
+            border: 3px solid #38bdf8 !important;
+            transform: scale(0.96);
+            z-index: 25;
+            box-shadow: 0 0 20px #38bdf8;
+            filter: brightness(1.25);
+        }
+
+        .puzzle-piece.correct-spot::after {
+            content: '';
+            position: absolute;
+            bottom: 3px;
+            right: 3px;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 6px #10b981;
+        }
+
+        /* Custom scrollbars */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <!-- Top Navigation Bar -->
+    <header class="w-full border-b border-teal-900/40 bg-slate-950/70 backdrop-blur-md px-4 py-3 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-3 cursor-pointer" onclick="goToMenu()">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-teal-500 to-cyan-400 flex items-center justify-center font-extrabold text-slate-950 shadow-lg shadow-teal-500/20">
+                    M
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                        MRANTI <span class="text-teal-400 font-normal">Park Puzzle Race</span>
+                        <span class="text-[10px] bg-teal-950 text-teal-300 font-mono px-2 py-0.5 rounded border border-teal-800/60">P2P Co-op</span>
+                    </h1>
+                    <p class="text-xs text-slate-400 hidden sm:block">Bukit Jalil Innovation Hub • Up to 4 Players</p>
+                </div>
+            </div>
+
+            <!-- Header Action Controls -->
+            <div class="flex items-center space-x-3">
+                <button id="btn-sound" class="px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-300 border border-slate-700/60 flex items-center gap-1.5 transition">
+                    <span id="sound-icon">🔊</span> <span id="sound-text" class="hidden sm:inline">Audio On</span>
+                </button>
+                <div id="user-tag" class="hidden sm:flex items-center gap-2 bg-slate-900/90 border border-teal-800/40 px-3 py-1.5 rounded-lg text-xs">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span id="header-username" class="text-slate-200 font-medium">Player</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container Area -->
+    <main class="flex-1 flex items-center justify-center p-3 sm:p-6 max-w-7xl mx-auto w-full">
+
+        <!-- ================= VIEW 1: WELCOME / MENU ================= -->
+        <section id="view-menu" class="w-full max-w-lg glass-card rounded-2xl p-6 sm:p-8 space-y-6">
+            <div class="text-center space-y-2">
+                <div class="inline-block px-3 py-1 bg-teal-500/10 border border-teal-500/30 text-teal-300 rounded-full text-xs font-semibold uppercase tracking-wider mb-1">
+                    MRANTI Innovation Challenge
+                </div>
+                <h2 class="text-2xl sm:text-3xl font-extrabold text-white">Multiplayer Puzzle Race</h2>
+                <p class="text-sm text-slate-400">Assemble Bukit Jalil MRANTI Park photos against friends in real-time or practice solo.</p>
+            </div>
+
+            <!-- Player Profile -->
+            <div class="space-y-2">
+                <label class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Your Nickname</label>
+                <input type="text" id="input-player-name" maxlength="15" placeholder="e.g. InnovatorX" 
+                    class="w-full px-4 py-3 bg-slate-900/80 border border-slate-700 rounded-xl focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-400 text-white font-medium">
+            </div>
+
+            <!-- Action Tabs / Mode Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <!-- Host Room -->
+                <button id="btn-create-room" class="p-4 rounded-xl bg-gradient-to-br from-teal-600 to-teal-800 hover:from-teal-500 hover:to-teal-700 text-white font-bold shadow-lg shadow-teal-900/40 flex flex-col items-center justify-center gap-1.5 transition transform active:scale-95 group">
+                    <span class="text-2xl group-hover:scale-110 transition-transform">👑</span>
+                    <span class="text-base">Host New Race</span>
+                    <span class="text-xs font-normal text-teal-200/90">Get a 5-letter Room Code</span>
+                </button>
+
+                <!-- Solo Practice -->
+                <button id="btn-solo-practice" class="p-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold flex flex-col items-center justify-center gap-1.5 transition transform active:scale-95 group">
+                    <span class="text-2xl group-hover:scale-110 transition-transform">⚡</span>
+                    <span class="text-base">Solo Practice</span>
+                    <span class="text-xs font-normal text-slate-400">Play offline & test speed</span>
+                </button>
+            </div>
+
+            <!-- Join Existing Room -->
+            <div class="border-t border-slate-800 pt-5 space-y-3">
+                <label class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Join with Room Code</label>
+                <div class="flex gap-2">
+                    <input type="text" id="input-room-code" maxlength="5" placeholder="CODE" 
+                        class="flex-1 uppercase font-mono tracking-widest text-center text-lg px-4 py-3 bg-slate-900/80 border border-slate-700 rounded-xl focus:border-teal-400 focus:outline-none focus:ring-1 focus:ring-teal-400 text-teal-300 font-bold">
+                    <button id="btn-join-room" class="px-6 py-3 bg-teal-500 hover:bg-teal-400 text-slate-950 font-extrabold rounded-xl transition transform active:scale-95 shadow-md shadow-teal-500/20">
+                        Join
+                    </button>
+                </div>
+            </div>
+
+            <!-- Connection Status Note -->
+            <div class="text-center pt-2">
+                <span class="text-[11px] text-slate-500">Zero sign-in needed • Direct P2P WebRTC multiplayer on GitHub Pages</span>
+            </div>
+        </section>
+
+
+        <!-- ================= VIEW 2: LOBBY ================= -->
+        <section id="view-lobby" class="w-full max-w-4xl glass-card rounded-2xl p-6 sm:p-8 space-y-6 hidden">
+            <!-- Header bar of Lobby -->
+            <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-5">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="px-2.5 py-0.5 bg-teal-500/10 border border-teal-500/30 text-teal-300 rounded text-xs font-semibold uppercase">Lobby</span>
+                        <h2 class="text-xl sm:text-2xl font-bold text-white">Race Preparation</h2>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1">Waiting for players to ready up. Up to 4 players can race simultaneously.</p>
+                </div>
+
+                <!-- Room Code Display -->
+                <div class="flex items-center gap-2 bg-slate-900/90 border border-teal-600/40 p-2.5 rounded-xl">
+                    <div class="text-right">
+                        <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Room Code</div>
+                        <div id="lobby-code-display" class="font-mono text-2xl font-extrabold tracking-widest text-teal-300 leading-none">-----</div>
+                    </div>
+                    <button id="btn-copy-code" title="Copy Room Code" class="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition border border-slate-700 text-sm">
+                        📋 Copy
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- Left Column: Settings & Picture Selection (7 cols) -->
+                <div class="lg:col-span-7 space-y-5">
+                    
+                    <!-- Board Dimension Selector (5x5 to 10x10) -->
+                    <div class="glass-panel p-4 rounded-xl space-y-3">
+                        <div class="flex justify-between items-center">
+                            <label class="text-xs font-bold text-slate-200 uppercase tracking-wider">Difficulty & Grid Size</label>
+                            <span id="grid-badge" class="text-xs font-mono font-bold bg-teal-950 text-teal-300 px-2.5 py-1 rounded border border-teal-800">5×5 (25 Tiles)</span>
+                        </div>
+                        
+                        <!-- Grid Size selector buttons -->
+                        <div id="grid-selector-container" class="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                            <button data-size="5" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-sm transition bg-teal-600/20 border-teal-500 text-teal-300">5×5</button>
+                            <button data-size="6" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">6×6</button>
+                            <button data-size="7" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">7×7</button>
+                            <button data-size="8" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">8×8</button>
+                            <button data-size="9" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">9×9</button>
+                            <button data-size="10" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">10×10</button>
+                        </div>
+                        <p id="host-only-grid-note" class="text-[11px] text-slate-400">Host controls the grid size for all participants.</p>
+                    </div>
+
+                    <!-- MRANTI Park Picture Picker -->
+                    <div class="glass-panel p-4 rounded-xl space-y-3">
+                        <div class="flex justify-between items-center">
+                            <label class="text-xs font-bold text-slate-200 uppercase tracking-wider">Select Puzzle Image</label>
+                            <button id="btn-random-photo" class="text-xs text-teal-400 hover:text-teal-300 flex items-center gap-1 font-semibold">
+                                🎲 Random Photo
+                            </button>
+                        </div>
+
+                        <!-- Picture Thumbnails Grid (4 default + 1 custom) -->
+                        <div id="image-thumbnails" class="grid grid-cols-5 gap-2">
+                            <!-- Injected dynamically -->
+                        </div>
+
+                        <!-- Active Image Preview & Details Card -->
+                        <div class="flex items-center gap-3 bg-slate-950/60 border border-slate-800 p-2.5 rounded-xl">
+                            <div class="w-12 h-12 rounded-lg overflow-hidden border border-teal-500/40 flex-shrink-0 bg-slate-900">
+                                <img id="active-preview-thumb" src="" alt="Active Image" class="w-full h-full object-cover">
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-[10px] text-teal-400 font-semibold uppercase tracking-wider">Active Challenge Image</div>
+                                <div id="current-image-name" class="text-xs font-bold text-slate-200 truncate">MRANTI Tech Hive</div>
+                            </div>
+                            <button onclick="openPeekModal()" class="text-xs text-slate-300 hover:text-teal-300 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition">
+                                👁️ Full
+                            </button>
+                        </div>
+
+                        <!-- Custom Image Dropzone & File Picker -->
+                        <div id="image-drop-zone" class="border-2 border-dashed border-slate-700 hover:border-teal-400 rounded-xl p-3 text-center transition bg-slate-900/40 cursor-pointer">
+                            <input type="file" id="custom-image-input" accept="image/*, image/png, image/jpeg, image/webp" class="hidden">
+                            <div class="flex flex-col items-center justify-center gap-1">
+                                <span class="text-xl">📁</span>
+                                <div class="text-xs font-bold text-slate-200">
+                                    <span class="text-teal-400 hover:underline">Click to upload custom picture</span> or drag & drop
+                                </div>
+                                <span id="upload-status-text" class="text-[11px] text-slate-400">Supports PNG, JPG, Screenshots, or Photos</span>
+                            </div>
+                        </div>
+
+                        <!-- URL Input Option -->
+                        <div class="flex gap-2">
+                            <input type="text" id="input-image-url" placeholder="Or paste image URL (https://...)" 
+                                class="flex-1 px-3 py-1.5 bg-slate-900/80 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-400">
+                            <button id="btn-load-url" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-teal-300 border border-slate-700 rounded-lg text-xs font-semibold transition">
+                                Load URL
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Player Cards & Ready Button (5 cols) -->
+                <div class="lg:col-span-5 flex flex-col justify-between space-y-4">
+                    <div class="glass-panel p-4 rounded-xl space-y-3">
+                        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                            <span class="text-xs font-bold text-slate-200 uppercase tracking-wider">Racers Connected</span>
+                            <span id="lobby-player-count" class="text-xs font-mono font-bold text-teal-400">1/4</span>
+                        </div>
+
+                        <!-- Player List -->
+                        <div id="lobby-players-container" class="space-y-2">
+                            <!-- Injected dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Lobby Action Buttons -->
+                    <div class="space-y-2 pt-2">
+                        <button id="btn-start-race" class="w-full py-4 rounded-xl bg-gradient-to-r from-teal-500 via-teal-600 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-slate-950 font-black text-lg shadow-xl shadow-teal-500/20 transition transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                            🚀 Start Race for Everyone
+                        </button>
+                        <button onclick="goToMenu()" class="w-full py-2.5 rounded-xl bg-slate-900/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 text-xs font-semibold transition">
+                            Leave Lobby
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- ================= VIEW 3: GAMEPLAY ARENA ================= -->
+        <section id="view-game" class="w-full max-w-7xl flex flex-col lg:flex-row gap-5 items-stretch hidden relative">
+            
+            <!-- Left Side: Live Stats & Racers Leaderboard -->
+            <div class="w-full lg:w-80 flex-shrink-0 flex flex-col gap-4 order-2 lg:order-1">
+                
+                <!-- Match Info & Timer Card -->
+                <div class="glass-card p-5 rounded-2xl space-y-3 border-teal-500/30">
+                    <div class="flex items-center justify-between text-xs text-slate-400">
+                        <span class="uppercase tracking-wider font-semibold">Race Clock</span>
+                        <span id="game-grid-badge" class="font-mono text-teal-300 font-bold bg-teal-950 px-2 py-0.5 rounded border border-teal-800/60">5×5</span>
+                    </div>
+                    <div id="game-timer" class="text-4xl font-mono font-extrabold text-white text-center tracking-tight py-1 bg-slate-950/60 rounded-xl border border-slate-800">
+                        00:00.0
+                    </div>
+
+                    <div class="flex items-center justify-between pt-1">
+                        <button id="btn-peek-image" class="flex-1 mr-2 py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition flex items-center justify-center gap-1 border border-slate-700">
+                            👁️ Peek Photo
+                        </button>
+                        <button id="btn-toggle-numbers" class="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition border border-slate-700" title="Toggle guide numbers on tiles">
+                            🔢 Numbers
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Live Racers Leaderboard -->
+                <div class="glass-card p-5 rounded-2xl flex-1 flex flex-col space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-teal-300 flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400"></span> Live Standings
+                        </h3>
+                        <span class="text-[11px] text-slate-400">Fastest finishes win</span>
+                    </div>
+
+                    <div id="live-leaderboard" class="space-y-2.5 flex-1 overflow-y-auto">
+                        <!-- Dynamic Racer Cards -->
+                    </div>
+
+                    <div class="pt-3 border-t border-slate-800 text-[11px] text-slate-400 text-center">
+                        Click any two pieces to swap their positions.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side: Puzzle Board Canvas -->
+            <div class="flex-1 flex flex-col items-center justify-center order-1 lg:order-2">
+                <div class="w-full max-w-[620px] aspect-square relative flex items-center justify-center p-2">
+                    
+                    <!-- Synchronized Countdown Overlay -->
+                    <div id="countdown-overlay" class="absolute inset-0 z-40 bg-slate-950/90 backdrop-blur-md rounded-2xl flex flex-col items-center justify-center gap-4 transition-opacity duration-300">
+                        <span class="text-xs font-bold uppercase tracking-widest text-teal-400 bg-teal-950/80 px-3 py-1 rounded-full border border-teal-800/80">Synchronized Start</span>
+                        <div id="countdown-number" class="text-9xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-br from-teal-300 via-cyan-400 to-emerald-400 animate-pulse">
+                            3
+                        </div>
+                        <p class="text-sm text-slate-300 font-medium">Get ready to race!</p>
+                    </div>
+
+                    <!-- Completed Victory Banner Overlay -->
+                    <div id="finish-celebration-overlay" class="absolute inset-0 z-30 bg-slate-950/85 backdrop-blur-md rounded-2xl flex flex-col items-center justify-center p-6 text-center space-y-4 hidden">
+                        <div class="w-16 h-16 rounded-full bg-teal-500/20 border border-teal-400 flex items-center justify-center text-3xl">
+                            🏆
+                        </div>
+                        <div>
+                            <h2 class="text-3xl font-black text-white">Puzzle Completed!</h2>
+                            <p class="text-slate-300 text-sm mt-1">Your Time: <span id="final-finish-time" class="font-mono font-bold text-teal-300">00:00.0</span></p>
+                        </div>
+                        <p class="text-xs text-slate-400 max-w-xs">Spectating remaining racers. Final leaderboard standings will settle once everyone finishes.</p>
+                        <div class="flex gap-2">
+                            <button onclick="document.getElementById('finish-celebration-overlay').classList.add('hidden')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-lg text-slate-200 border border-slate-700">
+                                View Board
+                            </button>
+                            <button id="btn-next-race" class="px-5 py-2 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs rounded-lg transition">
+                                Next Race
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Puzzle Grid Frame -->
+                    <div id="puzzle-board" class="w-full h-full">
+                        <!-- Tiles injected dynamically -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Modal: Reference Photo Peek -->
+    <div id="modal-peek" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 hidden" onclick="closePeekModal()">
+        <div class="glass-card max-w-lg w-full rounded-2xl p-4 space-y-3" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold uppercase text-slate-300" id="peek-modal-title">MRANTI Park Reference</span>
+                <button onclick="closePeekModal()" class="text-slate-400 hover:text-white text-lg font-bold">✕</button>
+            </div>
+            <div class="rounded-xl overflow-hidden border border-slate-700 aspect-square">
+                <img id="peek-modal-img" src="" alt="Reference" class="w-full h-full object-cover">
+            </div>
+            <div class="text-center">
+                <span class="text-[11px] text-slate-400">Click anywhere outside to close reference</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom In-App Notification / Dialog Modal -->
+    <div id="modal-alert" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="glass-card max-w-sm w-full rounded-2xl p-6 space-y-4 text-center">
+            <div id="modal-alert-icon" class="text-4xl">⚠️</div>
+            <h3 id="modal-alert-title" class="text-lg font-bold text-white">Notice</h3>
+            <p id="modal-alert-message" class="text-sm text-slate-300"></p>
+            <button onclick="closeAlertModal()" class="w-full py-2.5 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold rounded-xl transition">
+                Understood
+            </button>
+        </div>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // ==========================================
+        // 1. ASSETS & DEFAULT MRANTI PARK PHOTOS
+        // ==========================================
+        const MRANTI_IMAGES = [
+            {
+                id: 'hive',
+                name: 'MRANTI Tech Hive & Innovation Center',
+                url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80'
+            },
+            {
+                id: 'aerial',
+                name: 'Technology Park Malaysia Drone & Green Hub',
+                url: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=80'
+            },
+            {
+                id: 'lab',
+                name: 'Robotics & Autonomous Innovation Lab',
+                url: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=1200&q=80'
+            },
+            {
+                id: 'ecopark',
+                name: 'MRANTI Living Lab & Sustainable Lake Park',
+                url: 'https://images.unsplash.com/photo-1519999482648-25049ddd37b1?auto=format&fit=crop&w=1200&q=80'
+            }
+        ];
+
+        // ==========================================
+        // 2. STATE MANAGEMENT
+        // ==========================================
+        let state = {
+            playerName: 'Innovator_' + Math.floor(1000 + Math.random() * 9000),
+            playerId: 'player_' + Math.random().toString(36).substring(2, 9),
+            mode: 'menu', // 'menu', 'lobby', 'game'
+            isSolo: false,
+            isHost: false,
+            roomCode: '',
+            gridSize: 5, // 5 to 10
+            selectedImage: MRANTI_IMAGES[0].url,
+            selectedImageName: MRANTI_IMAGES[0].name,
+            customImage: null,
+            customImageName: null,
+            showNumbers: false,
+            soundEnabled: true,
+
+            // Puzzle Runtime State
+            boardTiles: [], // array of original tile indices at each slot
+            selectedPieceIndex: null,
+            solvedTilesCount: 0,
+            hasFinished: false,
+            elapsedTimeMs: 0,
+            raceStartTime: 0,
+            timerInterval: null,
+
+            // Racers in room
+            players: {} // id -> { name, isHost, progress, finishTime, rank }
+        };
+
+        // WebRTC PeerJS variables
+        const PEER_PREFIX = 'mranti-race-';
+        let peerInstance = null;
+        let connections = []; // Host keeps connection to all guests
+        let hostConnection = null; // Guest keeps connection to host
+
+        // Web Audio Synthesizer
+        let audioCtx = null;
+        function getAudioContext() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            return audioCtx;
+        }
+
+        function playSound(type) {
+            if (!state.soundEnabled) return;
+            try {
+                const ctx = getAudioContext();
+                const now = ctx.currentTime;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                if (type === 'click') {
+                    osc.frequency.setValueAtTime(600, now);
+                    gain.gain.setValueAtTime(0.08, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+                    osc.start(now);
+                    osc.stop(now + 0.05);
+                } else if (type === 'swap') {
+                    osc.frequency.setValueAtTime(350, now);
+                    osc.frequency.exponentialRampToValueAtTime(700, now + 0.08);
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+                    osc.start(now);
+                    osc.stop(now + 0.08);
+                } else if (type === 'correct') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(880, now);
+                    gain.gain.setValueAtTime(0.12, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                    osc.start(now);
+                    osc.stop(now + 0.15);
+                } else if (type === 'countdown-tick') {
+                    osc.frequency.setValueAtTime(440, now);
+                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                    osc.start(now);
+                    osc.stop(now + 0.1);
+                } else if (type === 'countdown-go') {
+                    osc.frequency.setValueAtTime(880, now);
+                    osc.frequency.exponentialRampToValueAtTime(1320, now + 0.25);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                } else if (type === 'win') {
+                    [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+                        const noteOsc = ctx.createOscillator();
+                        const noteGain = ctx.createGain();
+                        noteOsc.connect(noteGain);
+                        noteGain.connect(ctx.destination);
+                        noteOsc.type = 'triangle';
+                        noteOsc.frequency.setValueAtTime(freq, now + idx * 0.1);
+                        noteGain.gain.setValueAtTime(0.2, now + idx * 0.1);
+                        noteGain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.35);
+                        noteOsc.start(now + idx * 0.1);
+                        noteOsc.stop(now + idx * 0.1 + 0.35);
+                    });
+                }
+            } catch (e) {
+                console.warn('Audio play suppressed:', e);
+            }
+        }
+
+        // ==========================================
+        // 3. INITIALIZATION & DOM BINDINGS
+        // ==========================================
+        window.addEventListener('DOMContentLoaded', () => {
+            selectPuzzleImage(MRANTI_IMAGES[0].url, MRANTI_IMAGES[0].name);
+            setupDomEventListeners();
+            
+            // Check for room code in URL query (?room=ABCDE)
+            const urlParams = new URLSearchParams(window.location.search);
+            const queryRoom = urlParams.get('room');
+            if (queryRoom && queryRoom.length === 5) {
+                document.getElementById('input-room-code').value = queryRoom.toUpperCase();
+            }
+
+            document.getElementById('input-player-name').value = state.playerName;
+            document.getElementById('header-username').textContent = state.playerName;
+            document.getElementById('user-tag').classList.remove('hidden');
+        });
+
+        function setupDomEventListeners() {
+            // Nickname change
+            document.getElementById('input-player-name').addEventListener('input', (e) => {
+                const val = e.target.value.trim();
+                state.playerName = val || 'Racer_' + Math.floor(100 + Math.random() * 900);
+                document.getElementById('header-username').textContent = state.playerName;
+                if (state.players[state.playerId]) {
+                    state.players[state.playerId].name = state.playerName;
+                    broadcastRoomState();
+                }
+            });
+
+            // Sound Toggle
+            document.getElementById('btn-sound').addEventListener('click', () => {
+                state.soundEnabled = !state.soundEnabled;
+                document.getElementById('sound-icon').textContent = state.soundEnabled ? '🔊' : '🔇';
+                document.getElementById('sound-text').textContent = state.soundEnabled ? 'Audio On' : 'Muted';
+            });
+
+            // Mode Buttons
+            document.getElementById('btn-create-room').addEventListener('click', createMultiplayerRoom);
+            document.getElementById('btn-solo-practice').addEventListener('click', startSoloPractice);
+            document.getElementById('btn-join-room').addEventListener('click', joinMultiplayerRoom);
+            document.getElementById('btn-copy-code').addEventListener('click', copyRoomInvite);
+
+            // Host Grid Size buttons
+            document.querySelectorAll('.grid-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    if (!state.isHost && !state.isSolo) return;
+                    const size = parseInt(btn.dataset.size);
+                    setGridSize(size);
+                    if (state.isHost) broadcastRoomState();
+                });
+            });
+
+            // Random photo button
+            document.getElementById('btn-random-photo').addEventListener('click', () => {
+                if (!state.isHost && !state.isSolo) return;
+                const pool = [...MRANTI_IMAGES];
+                if (state.customImage) {
+                    pool.push({ url: state.customImage, name: state.customImageName || 'Custom Photo' });
+                }
+                const randomImg = pool[Math.floor(Math.random() * pool.length)];
+                selectPuzzleImage(randomImg.url, randomImg.name, randomImg.url === state.customImage);
+                if (state.isHost) broadcastRoomState();
+            });
+
+            // Custom image file dropzone & input
+            const dropZone = document.getElementById('image-drop-zone');
+            const fileInput = document.getElementById('custom-image-input');
+
+            dropZone.addEventListener('click', () => {
+                if (!state.isHost && !state.isSolo) return;
+                fileInput.click();
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (!state.isHost && !state.isSolo) return;
+                if (e.target.files && e.target.files[0]) {
+                    processAndSetCustomImage(e.target.files[0]);
+                }
+                fileInput.value = '';
+            });
+
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('border-teal-400', 'bg-teal-950/40');
+            });
+
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('border-teal-400', 'bg-teal-950/40');
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-teal-400', 'bg-teal-950/40');
+                if (!state.isHost && !state.isSolo) return;
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    processAndSetCustomImage(e.dataTransfer.files[0]);
+                }
+            });
+
+            // Custom URL loader button
+            document.getElementById('btn-load-url').addEventListener('click', () => {
+                if (!state.isHost && !state.isSolo) return;
+                const url = document.getElementById('input-image-url').value.trim();
+                if (!url) return;
+                
+                const testImg = new Image();
+                testImg.crossOrigin = 'anonymous';
+                testImg.onload = () => {
+                    state.customImage = url;
+                    state.customImageName = 'Web Image: ' + url.substring(url.lastIndexOf('/') + 1, url.lastIndexOf('/') + 20);
+                    selectPuzzleImage(url, state.customImageName, true);
+                    if (state.isHost) broadcastRoomState();
+                    document.getElementById('input-image-url').value = '';
+                };
+                testImg.onerror = () => {
+                    showAlertModal("URL Error", "Failed to load image from this URL. Please verify the URL points directly to an image file.", "❌");
+                };
+                testImg.src = url;
+            });
+
+            // Start Race button
+            document.getElementById('btn-start-race').addEventListener('click', triggerStartCountdown);
+            document.getElementById('btn-next-race').addEventListener('click', () => {
+                document.getElementById('finish-celebration-overlay').classList.add('hidden');
+                goToLobby();
+                if (state.isHost && !state.isSolo) {
+                    broadcast({ type: 'GOTO_LOBBY' });
+                }
+            });
+
+            // In-game controls
+            document.getElementById('btn-peek-image').addEventListener('click', openPeekModal);
+            document.getElementById('btn-toggle-numbers').addEventListener('click', toggleTileNumbers);
+        }
+
+        // ==========================================
+        // 4. IMAGE UPLOAD & COMPRESSION ENGINE
+        // ==========================================
+        function processAndSetCustomImage(file) {
+            const statusEl = document.getElementById('upload-status-text');
+            if (statusEl) statusEl.textContent = '⏳ Optimizing image...';
+
+            const blobUrl = URL.createObjectURL(file);
+            const img = new Image();
+
+            img.onload = () => {
+                try {
+                    // Safe 600x600 square crop: produces <45KB JPEG so it never overflows WebRTC
+                    const TARGET_SIZE = 600;
+                    const minDim = Math.min(img.width, img.height);
+                    const cropX = Math.round((img.width - minDim) / 2);
+                    const cropY = Math.round((img.height - minDim) / 2);
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = TARGET_SIZE;
+                    canvas.height = TARGET_SIZE;
+                    const ctx = canvas.getContext('2d');
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.imageSmoothingQuality = 'high';
+
+                    ctx.drawImage(img, cropX, cropY, minDim, minDim, 0, 0, TARGET_SIZE, TARGET_SIZE);
+                    URL.revokeObjectURL(blobUrl);
+
+                    // Compress to lightweight JPEG
+                    let optimizedDataUrl = canvas.toDataURL('image/jpeg', 0.72);
+                    if (optimizedDataUrl.length > 55000) {
+                        optimizedDataUrl = canvas.toDataURL('image/jpeg', 0.55);
+                    }
+
+                    const cleanName = file.name ? (file.name.length > 25 ? file.name.substring(0, 22) + '...' : file.name) : 'Custom Screenshot';
+                    
+                    state.customImage = optimizedDataUrl;
+                    state.customImageName = 'Custom: ' + cleanName;
+
+                    selectPuzzleImage(optimizedDataUrl, state.customImageName, true);
+                    
+                    if (statusEl) statusEl.textContent = '✅ ' + cleanName + ' uploaded!';
+                    if (state.isHost) broadcastRoomState();
+                } catch (err) {
+                    URL.revokeObjectURL(blobUrl);
+                    showAlertModal("Processing Error", "Failed to process image: " + err.message, "❌");
+                    if (statusEl) statusEl.textContent = 'Upload failed. Try another image.';
+                }
+            };
+
+            img.onerror = () => {
+                URL.revokeObjectURL(blobUrl);
+                showAlertModal("Invalid Image Format", "Could not read this file. Please ensure it is a PNG, JPG, or standard screenshot.", "❌");
+                if (statusEl) statusEl.textContent = 'Supported: PNG, JPG, WEBP';
+            };
+
+            img.src = blobUrl;
+        }
+
+        function initImageGallery() {
+            const container = document.getElementById('image-thumbnails');
+            if (!container) return;
+            container.innerHTML = '';
+
+            // 1. Default 4 MRANTI Photos
+            MRANTI_IMAGES.forEach((item, index) => {
+                const isSelected = (state.selectedImage === item.url);
+                const div = document.createElement('div');
+                div.className = `thumbnail-item relative rounded-lg overflow-hidden border-2 cursor-pointer aspect-square transition transform hover:scale-105 ${isSelected ? 'border-teal-400 ring-2 ring-teal-400/50 scale-105' : 'border-slate-700 opacity-60 hover:opacity-100'}`;
+                div.innerHTML = `
+                    <img src="${item.url}" alt="${item.name}" class="w-full h-full object-cover">
+                    <div class="absolute inset-x-0 bottom-0 bg-slate-950/85 p-0.5 text-[9px] text-center font-bold truncate text-slate-200">
+                        #${index + 1}
+                    </div>
+                `;
+                div.addEventListener('click', () => {
+                    if (!state.isHost && !state.isSolo) return;
+                    selectPuzzleImage(item.url, item.name);
+                    if (state.isHost) broadcastRoomState();
+                });
+                container.appendChild(div);
+            });
+
+            // 2. Custom Upload Slot (Slot 5)
+            const customSlot = document.createElement('div');
+            const isCustomSelected = (state.customImage && state.selectedImage === state.customImage);
+
+            if (state.customImage) {
+                customSlot.className = `thumbnail-item relative rounded-lg overflow-hidden border-2 cursor-pointer aspect-square transition transform hover:scale-105 ${isCustomSelected ? 'border-teal-400 ring-2 ring-teal-400/50 scale-105' : 'border-slate-700 opacity-60 hover:opacity-100'}`;
+                customSlot.innerHTML = `
+                    <img src="${state.customImage}" alt="Custom" class="w-full h-full object-cover">
+                    <div class="absolute inset-x-0 bottom-0 bg-teal-950/90 p-0.5 text-[9px] text-center font-bold text-teal-300 truncate">
+                        Custom ★
+                    </div>
+                `;
+                customSlot.addEventListener('click', () => {
+                    if (!state.isHost && !state.isSolo) return;
+                    selectPuzzleImage(state.customImage, state.customImageName || 'Custom Photo', true);
+                    if (state.isHost) broadcastRoomState();
+                });
+            } else {
+                customSlot.className = `thumbnail-item relative rounded-lg border-2 border-dashed border-slate-700 hover:border-teal-400 flex flex-col items-center justify-center cursor-pointer aspect-square transition bg-slate-900/40 hover:bg-slate-800/60 p-1 text-center group`;
+                customSlot.innerHTML = `
+                    <span class="text-base group-hover:scale-110 transition-transform">➕</span>
+                    <span class="text-[8px] text-slate-400 group-hover:text-teal-300 font-semibold mt-0.5 leading-tight">Custom</span>
+                `;
+                customSlot.addEventListener('click', () => {
+                    if (!state.isHost && !state.isSolo) return;
+                    document.getElementById('custom-image-input').click();
+                });
+            }
+            container.appendChild(customSlot);
+        }
+
+        function selectPuzzleImage(url, name, isCustom = false) {
+            state.selectedImage = url;
+            state.selectedImageName = name;
+
+            const nameEl = document.getElementById('current-image-name');
+            if (nameEl) nameEl.textContent = name;
+
+            const thumbEl = document.getElementById('active-preview-thumb');
+            if (thumbEl) thumbEl.src = url;
+
+            const peekImg = document.getElementById('peek-modal-img');
+            if (peekImg) peekImg.src = url;
+
+            const peekTitle = document.getElementById('peek-modal-title');
+            if (peekTitle) peekTitle.textContent = name;
+
+            initImageGallery();
+            playSound('click');
+        }
+
+        function setGridSize(size) {
+            state.gridSize = size;
+            const total = size * size;
+            document.getElementById('grid-badge').textContent = `${size}×${size} (${total} Tiles)`;
+            document.getElementById('game-grid-badge').textContent = `${size}×${size}`;
+
+            document.querySelectorAll('.grid-btn').forEach(btn => {
+                if (parseInt(btn.dataset.size) === size) {
+                    btn.className = 'grid-btn py-2 text-center rounded-lg border font-mono font-bold text-sm transition bg-teal-600/30 border-teal-400 text-teal-300 shadow-md shadow-teal-500/20';
+                } else {
+                    btn.className = 'grid-btn py-2 text-center rounded-lg border font-mono font-bold text-sm transition bg-slate-900/60 border-slate-700 text-slate-400 hover:border-slate-500';
+                }
+            });
+            playSound('click');
+        }
+
+        // ==========================================
+        // 5. NAVIGATION BETWEEN SCREENS
+        // ==========================================
+        function showScreen(name) {
+            state.mode = name;
+            document.getElementById('view-menu').classList.add('hidden');
+            document.getElementById('view-lobby').classList.add('hidden');
+            document.getElementById('view-game').classList.add('hidden');
+
+            if (name === 'menu') document.getElementById('view-menu').classList.remove('hidden');
+            if (name === 'lobby') document.getElementById('view-lobby').classList.remove('hidden');
+            if (name === 'game') document.getElementById('view-game').classList.remove('hidden');
+        }
+
+        function goToMenu() {
+            clearInterval(state.timerInterval);
+            if (peerInstance) {
+                try { peerInstance.destroy(); } catch(e){}
+                peerInstance = null;
+            }
+            connections = [];
+            hostConnection = null;
+            state.players = {};
+            showScreen('menu');
+        }
+
+        function goToLobby() {
+            clearInterval(state.timerInterval);
+            document.getElementById('countdown-overlay').classList.add('hidden');
+            document.getElementById('finish-celebration-overlay').classList.add('hidden');
+            showScreen('lobby');
+            updateLobbyUI();
+        }
+
+        // ==========================================
+        // 6. MULTIPLAYER WEBRTC LOGIC (PEERJS)
+        // ==========================================
+        function generateRoomCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let res = '';
+            for (let i = 0; i < 5; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
+            return res;
+        }
+
+        function createMultiplayerRoom() {
+            state.isSolo = false;
+            state.isHost = true;
+            state.roomCode = generateRoomCode();
+
+            const fullPeerId = PEER_PREFIX + state.roomCode;
+            initPeerConnection(fullPeerId, () => {
+                state.players = {
+                    [state.playerId]: {
+                        id: state.playerId,
+                        name: state.playerName,
+                        isHost: true,
+                        progress: 0,
+                        finishTime: null,
+                        rank: null
+                    }
+                };
+                goToLobby();
+                document.getElementById('lobby-code-display').textContent = state.roomCode;
+                document.getElementById('host-only-grid-note').textContent = "You are the Host. Choose dimensions and start the race.";
+                document.getElementById('btn-start-race').classList.remove('hidden');
+            });
+        }
+
+        function joinMultiplayerRoom() {
+            const codeInput = document.getElementById('input-room-code').value.trim().toUpperCase();
+            if (codeInput.length !== 5) {
+                showAlertModal("Invalid Room Code", "Please enter a valid 5-character room code.");
+                return;
+            }
+
+            state.isSolo = false;
+            state.isHost = false;
+            state.roomCode = codeInput;
+
+            initPeerConnection(null, () => {
+                const targetHostPeerId = PEER_PREFIX + state.roomCode;
+                const conn = peerInstance.connect(targetHostPeerId, { reliable: true });
+
+                conn.on('open', () => {
+                    hostConnection = conn;
+                    conn.send({
+                        type: 'JOIN_REQUEST',
+                        player: {
+                            id: state.playerId,
+                            name: state.playerName,
+                            isHost: false,
+                            progress: 0,
+                            finishTime: null,
+                            rank: null
+                        }
+                    });
+                });
+
+                conn.on('data', (data) => handleGuestReceivedData(data));
+
+                conn.on('close', () => {
+                    showAlertModal("Host Disconnected", "The host has closed the room or lost connection.");
+                    goToMenu();
+                });
+
+                conn.on('error', (err) => {
+                    showAlertModal("Connection Failed", "Could not reach room: " + state.roomCode);
+                });
+            });
+        }
+
+        function initPeerConnection(customId, onReady) {
+            if (peerInstance) {
+                try { peerInstance.destroy(); } catch(e){}
+            }
+
+            try {
+                peerInstance = customId ? new Peer(customId) : new Peer();
+            } catch(e) {
+                showAlertModal("Connection Error", "WebRTC failed to initialize: " + e.message);
+                return;
+            }
+
+            peerInstance.on('open', (id) => {
+                if (onReady) onReady(id);
+            });
+
+            peerInstance.on('connection', (conn) => {
+                if (!state.isHost) return;
+
+                conn.on('data', (data) => handleHostReceivedData(conn, data));
+
+                conn.on('close', () => {
+                    connections = connections.filter(c => c !== conn);
+                    for (let pid in state.players) {
+                        if (state.players[pid].conn === conn) {
+                            delete state.players[pid];
+                            break;
+                        }
+                    }
+                    broadcastRoomState();
+                    updateLobbyUI();
+                    updateLeaderboardUI();
+                });
+            });
+
+            peerInstance.on('error', (err) => {
+                console.error("PeerJS error:", err);
+                if (err.type === 'unavailable-id') {
+                    if (state.isHost) {
+                        createMultiplayerRoom();
+                    } else {
+                        showAlertModal("Room Error", "Room " + state.roomCode + " is already active or in conflict.");
+                    }
+                } else {
+                    showAlertModal("Network Alert", "WebRTC notice: " + (err.message || err.type));
+                }
+            });
+        }
+
+        // ==========================================
+        // 7. WEBRTC MESSAGING PROTOCOL
+        // ==========================================
+        function broadcast(msg) {
+            connections.forEach(conn => {
+                if (conn && conn.open) {
+                    try {
+                        conn.send(msg);
+                    } catch(err) {
+                        console.warn("Failed sending to peer:", err);
+                    }
+                }
+            });
+        }
+
+        function broadcastRoomState() {
+            if (!state.isHost) return;
+
+            const sanitizedPlayers = {};
+            for (let pid in state.players) {
+                sanitizedPlayers[pid] = {
+                    id: state.players[pid].id,
+                    name: state.players[pid].name,
+                    isHost: state.players[pid].isHost,
+                    progress: state.players[pid].progress,
+                    finishTime: state.players[pid].finishTime,
+                    rank: state.players[pid].rank
+                };
+            }
+
+            broadcast({
+                type: 'ROOM_UPDATE',
+                gridSize: state.gridSize,
+                selectedImage: state.selectedImage,
+                selectedImageName: state.selectedImageName,
+                customImage: state.customImage,
+                customImageName: state.customImageName,
+                players: sanitizedPlayers
+            });
+        }
+
+        function handleHostReceivedData(conn, data) {
+            if (data.type === 'JOIN_REQUEST') {
+                const currentCount = Object.keys(state.players).length;
+                if (currentCount >= 4) {
+                    conn.send({ type: 'JOIN_REJECT', reason: 'Room is full! Maximum 4 racers permitted.' });
+                    conn.close();
+                    return;
+                }
+
+                const p = data.player;
+                p.conn = conn;
+                state.players[p.id] = p;
+                connections.push(conn);
+
+                conn.send({ type: 'JOIN_CONFIRMED', roomCode: state.roomCode });
+                broadcastRoomState();
+                updateLobbyUI();
+                playSound('correct');
+            }
+            else if (data.type === 'PROGRESS_UPDATE') {
+                if (state.players[data.playerId]) {
+                    state.players[data.playerId].progress = data.progress;
+                    broadcastRoomState();
+                    updateLeaderboardUI();
+                }
+            }
+            else if (data.type === 'PLAYER_FINISH') {
+                if (state.players[data.playerId]) {
+                    state.players[data.playerId].finishTime = data.finishTime;
+                    
+                    const finishers = Object.values(state.players)
+                        .filter(p => p.finishTime !== null)
+                        .sort((a,b) => a.finishTime - b.finishTime);
+                    
+                    finishers.forEach((p, idx) => {
+                        state.players[p.id].rank = idx + 1;
+                    });
+
+                    broadcastRoomState();
+                    updateLeaderboardUI();
+                }
+            }
+        }
+
+        function handleGuestReceivedData(data) {
+            if (data.type === 'JOIN_CONFIRMED') {
+                goToLobby();
+                document.getElementById('lobby-code-display').textContent = state.roomCode;
+                document.getElementById('host-only-grid-note').textContent = "Waiting for host to configure grid and initiate the race.";
+                document.getElementById('btn-start-race').classList.add('hidden');
+            }
+            else if (data.type === 'JOIN_REJECT') {
+                showAlertModal("Room Full", data.reason);
+                goToMenu();
+            }
+            else if (data.type === 'ROOM_UPDATE') {
+                state.gridSize = data.gridSize;
+                state.selectedImage = data.selectedImage;
+                state.selectedImageName = data.selectedImageName;
+                if (data.customImage) {
+                    state.customImage = data.customImage;
+                    state.customImageName = data.customImageName;
+                }
+                state.players = data.players;
+
+                setGridSize(data.gridSize);
+                selectPuzzleImage(data.selectedImage, data.selectedImageName, !!data.customImage);
+                updateLobbyUI();
+                updateLeaderboardUI();
+            }
+            else if (data.type === 'START_COUNTDOWN') {
+                executeSynchronizedStart(data);
+            }
+            else if (data.type === 'GOTO_LOBBY') {
+                goToLobby();
+            }
+        }
+
+        // ==========================================
+        // 8. LOBBY & RACERS RENDERING
+        // ==========================================
+        function updateLobbyUI() {
+            const container = document.getElementById('lobby-players-container');
+            container.innerHTML = '';
+            
+            const playerList = Object.values(state.players);
+            document.getElementById('lobby-player-count').textContent = `${playerList.length}/4`;
+
+            playerList.forEach((player) => {
+                const isMe = player.id === state.playerId;
+                const div = document.createElement('div');
+                div.className = `flex items-center justify-between p-3 rounded-xl border transition ${isMe ? 'bg-teal-950/40 border-teal-500/50' : 'bg-slate-900/60 border-slate-800'}`;
+                
+                div.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 rounded-lg bg-gradient-to-tr ${player.isHost ? 'from-amber-400 to-yellow-600 text-slate-950' : 'from-teal-600 to-cyan-600 text-white'} flex items-center justify-center font-bold text-xs shadow-md">
+                            ${player.isHost ? '👑' : player.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                            <div class="text-sm font-semibold text-slate-200 flex items-center gap-1.5">
+                                ${escapeHtml(player.name)}
+                                ${isMe ? '<span class="text-[10px] bg-teal-500/20 text-teal-300 px-1.5 py-0.5 rounded border border-teal-500/30">You</span>' : ''}
+                            </div>
+                            <div class="text-[11px] text-slate-400 font-mono">${player.isHost ? 'Room Host' : 'Challenger'}</div>
+                        </div>
+                    </div>
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400"></span>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function copyRoomInvite() {
+            const textToCopy = state.roomCode;
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                const btn = document.getElementById('btn-copy-code');
+                const orig = btn.innerHTML;
+                btn.innerHTML = '✅ Copied!';
+                setTimeout(() => { btn.innerHTML = orig; }, 2000);
+            }).catch(() => {
+                prompt("Copy Room Code:", state.roomCode);
+            });
+            playSound('click');
+        }
+
+        // ==========================================
+        // 9. SOLO PRACTICE MODE
+        // ==========================================
+        function startSoloPractice() {
+            state.isSolo = true;
+            state.isHost = true;
+            state.roomCode = 'SOLO';
+            state.players = {
+                [state.playerId]: {
+                    id: state.playerId,
+                    name: state.playerName,
+                    isHost: true,
+                    progress: 0,
+                    finishTime: null,
+                    rank: null
+                }
+            };
+            goToLobby();
+            document.getElementById('lobby-code-display').textContent = 'SOLO';
+            document.getElementById('host-only-grid-note').textContent = "Solo Practice Mode. You have full control over board settings.";
+            document.getElementById('btn-start-race').classList.remove('hidden');
+        }
+
+        // ==========================================
+        // 10. SYNCHRONIZED START & PUZZLE GENERATION
+        // ==========================================
+        function generateShuffleArray(size) {
+            const total = size * size;
+            const arr = Array.from({ length: total }, (_, i) => i);
+            
+            // Fisher-Yates shuffle
+            for (let i = total - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+
+            // Ensure not accidentally already solved
+            let matched = arr.filter((v, i) => v === i).length;
+            if (matched > total * 0.2) {
+                [arr[0], arr[total - 1]] = [arr[total - 1], arr[0]];
+            }
+            return arr;
+        }
+
+        function triggerStartCountdown() {
+            if (!state.isHost && !state.isSolo) return;
+
+            const shuffleArray = generateShuffleArray(state.gridSize);
+            const countdownDelay = 3500;
+            const targetStartTime = Date.now() + countdownDelay;
+
+            const payload = {
+                type: 'START_COUNTDOWN',
+                shuffleArray: shuffleArray,
+                gridSize: state.gridSize,
+                selectedImage: state.selectedImage,
+                selectedImageName: state.selectedImageName,
+                startTime: targetStartTime
+            };
+
+            if (state.isHost && !state.isSolo) {
+                broadcast(payload);
+            }
+            executeSynchronizedStart(payload);
+        }
+
+        function executeSynchronizedStart(data) {
+            state.gridSize = data.gridSize;
+            state.selectedImage = data.selectedImage;
+            state.selectedImageName = data.selectedImageName;
+            state.hasFinished = false;
+            state.selectedPieceIndex = null;
+            state.boardTiles = [...data.shuffleArray];
+
+            for (let pid in state.players) {
+                state.players[pid].progress = 0;
+                state.players[pid].finishTime = null;
+                state.players[pid].rank = null;
+            }
+
+            showScreen('game');
+            buildPuzzleBoardGrid();
+            updateLeaderboardUI();
+
+            const overlay = document.getElementById('countdown-overlay');
+            const numberEl = document.getElementById('countdown-number');
+            overlay.classList.remove('hidden');
+            overlay.style.opacity = '1';
+
+            const startAt = data.startTime;
+            let lastSec = -1;
+
+            const countdownTicker = setInterval(() => {
+                const remaining = startAt - Date.now();
+                if (remaining <= 0) {
+                    clearInterval(countdownTicker);
+                    numberEl.textContent = 'GO!';
+                    playSound('countdown-go');
+                    
+                    setTimeout(() => {
+                        overlay.style.opacity = '0';
+                        setTimeout(() => overlay.classList.add('hidden'), 300);
+                        beginMatchTimer(startAt);
+                    }, 400);
+                } else {
+                    const sec = Math.ceil(remaining / 1000);
+                    if (sec !== lastSec && sec <= 3) {
+                        lastSec = sec;
+                        numberEl.textContent = sec;
+                        playSound('countdown-tick');
+                    }
+                }
+            }, 50);
+        }
+
+        // ==========================================
+        // 11. PUZZLE BOARD RENDERING & INTERACTION
+        // ==========================================
+        function buildPuzzleBoardGrid() {
+            const board = document.getElementById('puzzle-board');
+            board.innerHTML = '';
+            
+            const size = state.gridSize;
+            board.style.gridTemplateColumns = `repeat(${size}, 1fr)`;
+            board.style.gridTemplateRows = `repeat(${size}, 1fr)`;
+
+            state.boardTiles.forEach((originalIndex, slotIndex) => {
+                const piece = document.createElement('div');
+                piece.className = 'puzzle-piece';
+                piece.dataset.slotIndex = slotIndex;
+                piece.dataset.originalIndex = originalIndex;
+
+                const origCol = originalIndex % size;
+                const origRow = Math.floor(originalIndex / size);
+                
+                piece.style.backgroundImage = `url("${state.selectedImage}")`;
+                piece.style.backgroundSize = `${size * 100}% ${size * 100}%`;
+                
+                const posX = (origCol / (size - 1)) * 100;
+                const posY = (origRow / (size - 1)) * 100;
+                piece.style.backgroundPosition = `${posX}% ${posY}%`;
+
+                if (originalIndex === slotIndex) {
+                    piece.classList.add('correct-spot');
+                }
+
+                const numTag = document.createElement('span');
+                numTag.className = `piece-number absolute top-1 left-1 text-[10px] font-mono font-bold bg-slate-950/70 text-teal-300 px-1 rounded pointer-events-none ${state.showNumbers ? '' : 'hidden'}`;
+                numTag.textContent = originalIndex + 1;
+                piece.appendChild(numTag);
+
+                piece.addEventListener('click', () => handlePieceClick(slotIndex));
+                board.appendChild(piece);
+            });
+
+            checkLocalProgress();
+        }
+
+        function handlePieceClick(clickedSlotIndex) {
+            if (state.hasFinished) return;
+            const pieces = document.querySelectorAll('.puzzle-piece');
+
+            if (state.selectedPieceIndex === null) {
+                state.selectedPieceIndex = clickedSlotIndex;
+                pieces[clickedSlotIndex].classList.add('selected');
+                playSound('click');
+            } else if (state.selectedPieceIndex === clickedSlotIndex) {
+                pieces[clickedSlotIndex].classList.remove('selected');
+                state.selectedPieceIndex = null;
+                playSound('click');
+            } else {
+                const firstSlot = state.selectedPieceIndex;
+                const secondSlot = clickedSlotIndex;
+                pieces[firstSlot].classList.remove('selected');
+
+                const temp = state.boardTiles[firstSlot];
+                state.boardTiles[firstSlot] = state.boardTiles[secondSlot];
+                state.boardTiles[secondSlot] = temp;
+
+                buildPuzzleBoardGrid();
+                playSound('swap');
+                state.selectedPieceIndex = null;
+
+                checkLocalProgress();
+            }
+        }
+
+        function toggleTileNumbers() {
+            state.showNumbers = !state.showNumbers;
+            document.querySelectorAll('.piece-number').forEach(el => {
+                if (state.showNumbers) el.classList.remove('hidden');
+                else el.classList.add('hidden');
+            });
+            playSound('click');
+        }
+
+        // ==========================================
+        // 12. PROGRESS TRACKING & VICTORY LOGIC
+        // ==========================================
+        function checkLocalProgress() {
+            const total = state.gridSize * state.gridSize;
+            let correct = 0;
+
+            state.boardTiles.forEach((origIdx, slotIdx) => {
+                if (origIdx === slotIdx) correct++;
+            });
+
+            state.solvedTilesCount = correct;
+            const percentage = Math.round((correct / total) * 100);
+
+            if (state.players[state.playerId]) {
+                state.players[state.playerId].progress = percentage;
+            }
+
+            if (!state.isSolo) {
+                if (state.isHost) {
+                    broadcastRoomState();
+                } else if (hostConnection && hostConnection.open) {
+                    hostConnection.send({
+                        type: 'PROGRESS_UPDATE',
+                        playerId: state.playerId,
+                        progress: percentage
+                    });
+                }
+            }
+            updateLeaderboardUI();
+
+            if (correct === total && !state.hasFinished) {
+                triggerLocalWin();
+            }
+        }
+
+        function triggerLocalWin() {
+            state.hasFinished = true;
+            clearInterval(state.timerInterval);
+
+            const finalTime = state.elapsedTimeMs;
+            const formatted = formatTime(finalTime);
+
+            document.getElementById('final-finish-time').textContent = formatted;
+            document.getElementById('finish-celebration-overlay').classList.remove('hidden');
+
+            playSound('win');
+            confetti({
+                particleCount: 120,
+                spread: 70,
+                origin: { y: 0.6 }
+            });
+
+            if (state.players[state.playerId]) {
+                state.players[state.playerId].finishTime = finalTime;
+            }
+
+            if (!state.isSolo) {
+                if (state.isHost) {
+                    const finishers = Object.values(state.players)
+                        .filter(p => p.finishTime !== null)
+                        .sort((a,b) => a.finishTime - b.finishTime);
+                    finishers.forEach((p, idx) => {
+                        state.players[p.id].rank = idx + 1;
+                    });
+                    broadcastRoomState();
+                    updateLeaderboardUI();
+                } else if (hostConnection && hostConnection.open) {
+                    hostConnection.send({
+                        type: 'PLAYER_FINISH',
+                        playerId: state.playerId,
+                        finishTime: finalTime
+                    });
+                }
+            }
+        }
+
+        function beginMatchTimer(startTime) {
+            state.raceStartTime = startTime;
+            clearInterval(state.timerInterval);
+
+            state.timerInterval = setInterval(() => {
+                if (state.hasFinished) return;
+                state.elapsedTimeMs = Math.max(0, Date.now() - state.raceStartTime);
+                document.getElementById('game-timer').textContent = formatTime(state.elapsedTimeMs);
+            }, 80);
+        }
+
+        function formatTime(ms) {
+            if (!ms || ms < 0) return "00:00.0";
+            const totalSec = Math.floor(ms / 1000);
+            const min = Math.floor(totalSec / 60);
+            const sec = totalSec % 60;
+            const tenths = Math.floor((ms % 1000) / 100);
+            return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${tenths}`;
+        }
+
+        // ==========================================
+        // 13. LIVE LEADERBOARD RENDERING
+        // ==========================================
+        function updateLeaderboardUI() {
+            const container = document.getElementById('live-leaderboard');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const playerList = Object.values(state.players);
+
+            playerList.sort((a, b) => {
+                if (a.finishTime !== null && b.finishTime !== null) return a.finishTime - b.finishTime;
+                if (a.finishTime !== null) return -1;
+                if (b.finishTime !== null) return 1;
+                return (b.progress || 0) - (a.progress || 0);
+            });
+
+            playerList.forEach((player, index) => {
+                const isMe = player.id === state.playerId;
+                const isFinished = player.finishTime !== null;
+                const div = document.createElement('div');
+                div.className = `p-2.5 rounded-xl border transition ${isMe ? 'bg-slate-900/90 border-teal-500/50' : 'bg-slate-950/60 border-slate-800'}`;
+
+                let rankBadge = `<span class="text-xs font-mono font-bold text-slate-500">#${index + 1}</span>`;
+                if (isFinished) {
+                    if (index === 0) rankBadge = `<span class="text-sm">🥇</span>`;
+                    else if (index === 1) rankBadge = `<span class="text-sm">🥈</span>`;
+                    else if (index === 2) rankBadge = `<span class="text-sm">🥉</span>`;
+                    else rankBadge = `<span class="text-xs font-bold text-emerald-400">FIN</span>`;
+                }
+
+                div.innerHTML = `
+                    <div class="flex items-center justify-between mb-1.5">
+                        <div class="flex items-center gap-2 truncate">
+                            ${rankBadge}
+                            <span class="text-xs font-bold ${isMe ? 'text-teal-300' : 'text-slate-200'} truncate max-w-[110px]">
+                                ${escapeHtml(player.name)} ${isMe ? '(You)' : ''}
+                            </span>
+                        </div>
+                        <span class="text-xs font-mono font-bold ${isFinished ? 'text-emerald-400' : 'text-slate-400'}">
+                            ${isFinished ? formatTime(player.finishTime) : `${player.progress || 0}%`}
+                        </span>
+                    </div>
+
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div class="h-full rounded-full transition-all duration-300 ${isFinished ? 'bg-emerald-400' : 'bg-gradient-to-r from-teal-500 to-cyan-400'}"
+                            style="width: ${player.progress || 0}%"></div>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        // ==========================================
+        // 14. MODAL DIALOG HELPERS
+        // ==========================================
+        function openPeekModal() {
+            document.getElementById('modal-peek').classList.remove('hidden');
+            playSound('click');
+        }
+
+        function closePeekModal() {
+            document.getElementById('modal-peek').classList.add('hidden');
+        }
+
+        function showAlertModal(title, msg, icon = '⚠️') {
+            document.getElementById('modal-alert-title').textContent = title;
+            document.getElementById('modal-alert-message').textContent = msg;
+            document.getElementById('modal-alert-icon').textContent = icon;
+            document.getElementById('modal-alert').classList.remove('hidden');
+        }
+
+        function closeAlertModal() {
+            document.getElementById('modal-alert').classList.add('hidden');
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+    </script>
+</body>
+</html>
