@@ -6,8 +6,14 @@
     <title>MRANTI Park Puzzle Race</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- PeerJS for direct WebRTC multiplayer on GitHub Pages -->
-    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <!-- MQTT.js for Real-Time Multi-Desktop Sync on GitHub Pages -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.16.1/mqtt.min.js"></script>
+    <script>
+        // Fallback CDN for MQTT if cdnjs is blocked
+        if (typeof mqtt === 'undefined') {
+            document.write('<script src="https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.min.js"><\/script>');
+        }
+    </script>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <!-- Canvas Confetti -->
@@ -46,21 +52,19 @@
             user-select: none;
         }
 
-        /* Glassmorphism styling */
         .glass-card {
-            background: rgba(15, 23, 42, 0.75);
+            background: rgba(15, 23, 42, 0.8);
             backdrop-filter: blur(16px);
-            border: 1px solid rgba(20, 184, 166, 0.2);
+            border: 1px solid rgba(20, 184, 166, 0.25);
             box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
         }
 
         .glass-panel {
-            background: rgba(30, 41, 59, 0.65);
+            background: rgba(30, 41, 59, 0.7);
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.08);
         }
 
-        /* Puzzle Board */
         #puzzle-board {
             display: grid;
             position: relative;
@@ -97,16 +101,15 @@
         .puzzle-piece.correct-spot::after {
             content: '';
             position: absolute;
-            bottom: 3px;
-            right: 3px;
-            width: 6px;
-            height: 6px;
+            bottom: 4px;
+            right: 4px;
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
             background: #10b981;
-            box-shadow: 0 0 6px #10b981;
+            box-shadow: 0 0 8px #10b981;
         }
 
-        /* Custom scrollbars */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
@@ -116,7 +119,7 @@
 <body class="flex flex-col min-h-screen">
 
     <!-- Top Navigation Bar -->
-    <header class="w-full border-b border-teal-900/40 bg-slate-950/70 backdrop-blur-md px-4 py-3 sticky top-0 z-40">
+    <header class="w-full border-b border-teal-900/40 bg-slate-950/80 backdrop-blur-md px-4 py-3 sticky top-0 z-40">
         <div class="max-w-7xl mx-auto flex items-center justify-between">
             <div class="flex items-center space-x-3 cursor-pointer" onclick="goToMenu()">
                 <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-teal-500 to-cyan-400 flex items-center justify-center font-extrabold text-slate-950 shadow-lg shadow-teal-500/20">
@@ -125,9 +128,9 @@
                 <div>
                     <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
                         MRANTI <span class="text-teal-400 font-normal">Park Puzzle Race</span>
-                        <span class="text-[10px] bg-teal-950 text-teal-300 font-mono px-2 py-0.5 rounded border border-teal-800/60">P2P Co-op</span>
+                        <span class="text-[10px] bg-teal-950 text-teal-300 font-mono px-2 py-0.5 rounded border border-teal-800/60">Live Co-op</span>
                     </h1>
-                    <p class="text-xs text-slate-400 hidden sm:block">Bukit Jalil Innovation Hub • Up to 4 Players</p>
+                    <p class="text-xs text-slate-400 hidden sm:block">Bukit Jalil Innovation Hub • Up to 4 Desktops</p>
                 </div>
             </div>
 
@@ -136,7 +139,7 @@
                 <button id="btn-sound" class="px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-300 border border-slate-700/60 flex items-center gap-1.5 transition">
                     <span id="sound-icon">🔊</span> <span id="sound-text" class="hidden sm:inline">Audio On</span>
                 </button>
-                <div id="user-tag" class="hidden sm:flex items-center gap-2 bg-slate-900/90 border border-teal-800/40 px-3 py-1.5 rounded-lg text-xs">
+                <div id="user-tag" class="flex items-center gap-2 bg-slate-900/90 border border-teal-800/40 px-3 py-1.5 rounded-lg text-xs">
                     <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                     <span id="header-username" class="text-slate-200 font-medium">Player</span>
                 </div>
@@ -154,7 +157,7 @@
                     MRANTI Innovation Challenge
                 </div>
                 <h2 class="text-2xl sm:text-3xl font-extrabold text-white">Multiplayer Puzzle Race</h2>
-                <p class="text-sm text-slate-400">Assemble Bukit Jalil MRANTI Park photos against friends in real-time or practice solo.</p>
+                <p class="text-sm text-slate-400">Race friends in real-time across separate computers or practice solo.</p>
             </div>
 
             <!-- Player Profile -->
@@ -169,7 +172,7 @@
                 <!-- Host Room -->
                 <button id="btn-create-room" class="p-4 rounded-xl bg-gradient-to-br from-teal-600 to-teal-800 hover:from-teal-500 hover:to-teal-700 text-white font-bold shadow-lg shadow-teal-900/40 flex flex-col items-center justify-center gap-1.5 transition transform active:scale-95 group">
                     <span class="text-2xl group-hover:scale-110 transition-transform">👑</span>
-                    <span class="text-base">Host New Race</span>
+                    <span class="text-base font-extrabold">Host New Race</span>
                     <span class="text-xs font-normal text-teal-200/90">Get a 5-letter Room Code</span>
                 </button>
 
@@ -193,9 +196,8 @@
                 </div>
             </div>
 
-            <!-- Connection Status Note -->
             <div class="text-center pt-2">
-                <span class="text-[11px] text-slate-500">Zero sign-in needed • Direct P2P WebRTC multiplayer on GitHub Pages</span>
+                <span class="text-[11px] text-slate-500">Live multi-desktop sync • Zero install required on GitHub Pages</span>
             </div>
         </section>
 
@@ -209,7 +211,10 @@
                         <span class="px-2.5 py-0.5 bg-teal-500/10 border border-teal-500/30 text-teal-300 rounded text-xs font-semibold uppercase">Lobby</span>
                         <h2 class="text-xl sm:text-2xl font-bold text-white">Race Preparation</h2>
                     </div>
-                    <p class="text-xs text-slate-400 mt-1">Waiting for players to ready up. Up to 4 players can race simultaneously.</p>
+                    <div id="lobby-status-banner" class="flex items-center gap-2 text-xs text-amber-300 mt-1.5 font-medium">
+                        <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                        <span id="lobby-status-text">Connecting to room network...</span>
+                    </div>
                 </div>
 
                 <!-- Room Code Display -->
@@ -240,7 +245,7 @@
                             <button data-size="2" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">2×2</button>
                             <button data-size="3" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">3×3</button>
                             <button data-size="4" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">4×4</button>
-                            <button data-size="5" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-teal-600/20 border-teal-500 text-teal-300">5×5</button>
+                            <button data-size="5" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-teal-600/30 border-teal-400 text-teal-300 shadow-md shadow-teal-500/20">5×5</button>
                             <button data-size="6" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">6×6</button>
                             <button data-size="7" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">7×7</button>
                             <button data-size="8" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">8×8</button>
@@ -259,7 +264,7 @@
                             </button>
                         </div>
 
-                        <!-- Picture Thumbnails Grid (4 default + 1 custom) -->
+                        <!-- Picture Thumbnails Grid -->
                         <div id="image-thumbnails" class="grid grid-cols-5 gap-2">
                             <!-- Injected dynamically -->
                         </div>
@@ -379,7 +384,7 @@
                 <div class="w-full max-w-[620px] aspect-square relative flex items-center justify-center p-2">
                     
                     <!-- Synchronized Countdown Overlay -->
-                    <div id="countdown-overlay" class="absolute inset-0 z-40 bg-slate-950/90 backdrop-blur-md rounded-2xl flex flex-col items-center justify-center gap-4 transition-opacity duration-300">
+                    <div id="countdown-overlay" class="absolute inset-0 z-40 bg-slate-950/90 backdrop-blur-md rounded-2xl flex flex-col items-center justify-center gap-4 transition-opacity duration-300 hidden">
                         <span class="text-xs font-bold uppercase tracking-widest text-teal-400 bg-teal-950/80 px-3 py-1 rounded-full border border-teal-800/80">Synchronized Start</span>
                         <div id="countdown-number" class="text-9xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-br from-teal-300 via-cyan-400 to-emerald-400 animate-pulse">
                             3
@@ -473,6 +478,12 @@
             }
         ];
 
+        // Public MQTT WebSockets brokers with TLS
+        const MQTT_BROKERS = [
+            'wss://broker.emqx.io:8084/mqtt',
+            'wss://broker.hivemq.com:8884/mqtt'
+        ];
+
         // ==========================================
         // 2. STATE MANAGEMENT
         // ==========================================
@@ -483,7 +494,7 @@
             isSolo: false,
             isHost: false,
             roomCode: '',
-            gridSize: 5, // 5 to 10
+            gridSize: 5, // 2 to 10
             selectedImage: MRANTI_IMAGES[0].url,
             selectedImageName: MRANTI_IMAGES[0].name,
             customImage: null,
@@ -492,7 +503,7 @@
             soundEnabled: true,
 
             // Puzzle Runtime State
-            boardTiles: [], // array of original tile indices at each slot
+            boardTiles: [],
             selectedPieceIndex: null,
             solvedTilesCount: 0,
             hasFinished: false,
@@ -501,14 +512,13 @@
             timerInterval: null,
 
             // Racers in room
-            players: {} // id -> { name, isHost, progress, finishTime, rank }
+            players: {}
         };
 
-        // WebRTC PeerJS variables
-        const PEER_PREFIX = 'mranti-race-';
-        let peerInstance = null;
-        let connections = []; // Host keeps connection to all guests
-        let hostConnection = null; // Guest keeps connection to host
+        // MQTT Client Instance
+        let mqttClient = null;
+        let activeBrokerIndex = 0;
+        let heartbeatInterval = null;
 
         // Web Audio Synthesizer
         let audioCtx = null;
@@ -592,7 +602,6 @@
             selectPuzzleImage(MRANTI_IMAGES[0].url, MRANTI_IMAGES[0].name);
             setupDomEventListeners();
             
-            // Check for room code in URL query (?room=ABCDE)
             const urlParams = new URLSearchParams(window.location.search);
             const queryRoom = urlParams.get('room');
             if (queryRoom && queryRoom.length === 5) {
@@ -601,7 +610,6 @@
 
             document.getElementById('input-player-name').value = state.playerName;
             document.getElementById('header-username').textContent = state.playerName;
-            document.getElementById('user-tag').classList.remove('hidden');
         });
 
         function setupDomEventListeners() {
@@ -612,7 +620,8 @@
                 document.getElementById('header-username').textContent = state.playerName;
                 if (state.players[state.playerId]) {
                     state.players[state.playerId].name = state.playerName;
-                    broadcastRoomState();
+                    if (state.isHost) broadcastRoomState();
+                    else sendMqttMessage({ type: 'PLAYER_NAME_UPDATE', playerId: state.playerId, name: state.playerName });
                 }
             });
 
@@ -629,9 +638,9 @@
             document.getElementById('btn-join-room').addEventListener('click', joinMultiplayerRoom);
             document.getElementById('btn-copy-code').addEventListener('click', copyRoomInvite);
 
-            // Host Grid Size buttons
+            // Grid Size buttons (2x2 up to 10x10)
             document.querySelectorAll('.grid-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
+                btn.addEventListener('click', () => {
                     if (!state.isHost && !state.isSolo) return;
                     const size = parseInt(btn.dataset.size);
                     setGridSize(size);
@@ -702,7 +711,7 @@
                     document.getElementById('input-image-url').value = '';
                 };
                 testImg.onerror = () => {
-                    showAlertModal("URL Error", "Failed to load image from this URL. Please verify the URL points directly to an image file.", "❌");
+                    showAlertModal("URL Error", "Failed to load image from this URL. Please verify the link.", "❌");
                 };
                 testImg.src = url;
             });
@@ -713,7 +722,7 @@
                 document.getElementById('finish-celebration-overlay').classList.add('hidden');
                 goToLobby();
                 if (state.isHost && !state.isSolo) {
-                    broadcast({ type: 'GOTO_LOBBY' });
+                    sendMqttMessage({ type: 'GOTO_LOBBY' });
                 }
             });
 
@@ -723,18 +732,17 @@
         }
 
         // ==========================================
-        // 4. IMAGE UPLOAD & COMPRESSION ENGINE
+        // 4. IMAGE UPLOAD & OPTIMIZATION
         // ==========================================
         function processAndSetCustomImage(file) {
             const statusEl = document.getElementById('upload-status-text');
-            if (statusEl) statusEl.textContent = '⏳ Optimizing image...';
+            if (statusEl) statusEl.textContent = '⏳ Optimizing picture...';
 
             const blobUrl = URL.createObjectURL(file);
             const img = new Image();
 
             img.onload = () => {
                 try {
-                    // Safe 600x600 square crop: produces <45KB JPEG so it never overflows WebRTC
                     const TARGET_SIZE = 600;
                     const minDim = Math.min(img.width, img.height);
                     const cropX = Math.round((img.width - minDim) / 2);
@@ -750,10 +758,9 @@
                     ctx.drawImage(img, cropX, cropY, minDim, minDim, 0, 0, TARGET_SIZE, TARGET_SIZE);
                     URL.revokeObjectURL(blobUrl);
 
-                    // Compress to lightweight JPEG
                     let optimizedDataUrl = canvas.toDataURL('image/jpeg', 0.72);
                     if (optimizedDataUrl.length > 55000) {
-                        optimizedDataUrl = canvas.toDataURL('image/jpeg', 0.55);
+                        optimizedDataUrl = canvas.toDataURL('image/jpeg', 0.52);
                     }
 
                     const cleanName = file.name ? (file.name.length > 25 ? file.name.substring(0, 22) + '...' : file.name) : 'Custom Screenshot';
@@ -768,13 +775,13 @@
                 } catch (err) {
                     URL.revokeObjectURL(blobUrl);
                     showAlertModal("Processing Error", "Failed to process image: " + err.message, "❌");
-                    if (statusEl) statusEl.textContent = 'Upload failed. Try another image.';
+                    if (statusEl) statusEl.textContent = 'Upload failed. Try another picture.';
                 }
             };
 
             img.onerror = () => {
                 URL.revokeObjectURL(blobUrl);
-                showAlertModal("Invalid Image Format", "Could not read this file. Please ensure it is a PNG, JPG, or standard screenshot.", "❌");
+                showAlertModal("Invalid Image Format", "Could not read this image file. Supported: PNG, JPG, WEBP.", "❌");
                 if (statusEl) statusEl.textContent = 'Supported: PNG, JPG, WEBP';
             };
 
@@ -786,7 +793,7 @@
             if (!container) return;
             container.innerHTML = '';
 
-            // 1. Default 4 MRANTI Photos
+            // Default MRANTI Photos
             MRANTI_IMAGES.forEach((item, index) => {
                 const isSelected = (state.selectedImage === item.url);
                 const div = document.createElement('div');
@@ -805,7 +812,7 @@
                 container.appendChild(div);
             });
 
-            // 2. Custom Upload Slot (Slot 5)
+            // Slot 5: Custom Image
             const customSlot = document.createElement('div');
             const isCustomSelected = (state.customImage && state.selectedImage === state.customImage);
 
@@ -888,13 +895,8 @@
 
         function goToMenu() {
             clearInterval(state.timerInterval);
-            stopPeerHeartbeat();
-            if (peerInstance) {
-                try { peerInstance.destroy(); } catch(e){}
-                peerInstance = null;
-            }
-            connections = [];
-            hostConnection = null;
+            clearInterval(heartbeatInterval);
+            disconnectMqtt();
             state.players = {};
             showScreen('menu');
         }
@@ -908,43 +910,8 @@
         }
 
         // ==========================================
-        // 6. MULTIPLAYER WEBRTC LOGIC (PEERJS)
+        // 6. MULTIPLAYER OVER SECURE MQTT WEBSOCKETS
         // ==========================================
-        const PEER_CONFIG = {
-            debug: 0,
-            config: {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun2.l.google.com:19302' }
-                ]
-            }
-        };
-
-        let heartbeatTimer = null;
-
-        function startPeerHeartbeat() {
-            clearInterval(heartbeatTimer);
-            heartbeatTimer = setInterval(() => {
-                if (peerInstance && !peerInstance.destroyed) {
-                    if (peerInstance.disconnected) {
-                        try { peerInstance.reconnect(); } catch(e) {}
-                    } else if (peerInstance.socket && peerInstance.socket._ws && peerInstance.socket._ws.readyState === WebSocket.OPEN) {
-                        try {
-                            peerInstance.socket._ws.send(JSON.stringify({ type: 'HEARTBEAT' }));
-                        } catch(e) {}
-                    }
-                }
-            }, 12000);
-        }
-
-        function stopPeerHeartbeat() {
-            if (heartbeatTimer) {
-                clearInterval(heartbeatTimer);
-                heartbeatTimer = null;
-            }
-        }
-
         function generateRoomCode() {
             const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
             let res = '';
@@ -952,34 +919,53 @@
             return res;
         }
 
+        function updateLobbyStatus(msg, isSuccess = false) {
+            const banner = document.getElementById('lobby-status-banner');
+            const textEl = document.getElementById('lobby-status-text');
+            if (!banner || !textEl) return;
+
+            textEl.textContent = msg;
+            if (isSuccess) {
+                banner.className = 'flex items-center gap-2 text-xs text-emerald-400 mt-1.5 font-medium';
+                banner.querySelector('span:first-child').className = 'w-2 h-2 rounded-full bg-emerald-400';
+            } else {
+                banner.className = 'flex items-center gap-2 text-xs text-amber-300 mt-1.5 font-medium';
+                banner.querySelector('span:first-child').className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+            }
+        }
+
         function createMultiplayerRoom() {
+            playSound('click');
             state.isSolo = false;
             state.isHost = true;
             state.roomCode = generateRoomCode();
 
-            const fullPeerId = PEER_PREFIX + state.roomCode;
-            initPeerConnection(fullPeerId, () => {
-                state.players = {
-                    [state.playerId]: {
-                        id: state.playerId,
-                        name: state.playerName,
-                        isHost: true,
-                        progress: 0,
-                        finishTime: null,
-                        rank: null
-                    }
-                };
-                goToLobby();
-                document.getElementById('lobby-code-display').textContent = state.roomCode;
-                document.getElementById('host-only-grid-note').textContent = "You are the Host. Choose dimensions and start the race.";
-                document.getElementById('btn-start-race').classList.remove('hidden');
-            });
+            state.players = {
+                [state.playerId]: {
+                    id: state.playerId,
+                    name: state.playerName,
+                    isHost: true,
+                    progress: 0,
+                    finishTime: null,
+                    rank: null
+                }
+            };
+
+            // Switch to lobby immediately with zero delay
+            goToLobby();
+            document.getElementById('lobby-code-display').textContent = state.roomCode;
+            document.getElementById('host-only-grid-note').textContent = "You are the Host. Choose dimensions and start the race.";
+            document.getElementById('btn-start-race').classList.remove('hidden');
+            updateLobbyStatus("Connecting to live race network...");
+
+            connectMqttBroker();
         }
 
         function joinMultiplayerRoom() {
+            playSound('click');
             const codeInput = document.getElementById('input-room-code').value.trim().toUpperCase();
             if (codeInput.length !== 5) {
-                showAlertModal("Invalid Room Code", "Please enter a valid 5-character room code.");
+                showAlertModal("Invalid Room Code", "Please enter a 5-character room code.");
                 return;
             }
 
@@ -987,132 +973,130 @@
             state.isHost = false;
             state.roomCode = codeInput;
 
-            initPeerConnection(null, () => {
-                const targetHostPeerId = PEER_PREFIX + state.roomCode;
-                const conn = peerInstance.connect(targetHostPeerId, { reliable: true });
+            state.players = {
+                [state.playerId]: {
+                    id: state.playerId,
+                    name: state.playerName,
+                    isHost: false,
+                    progress: 0,
+                    finishTime: null,
+                    rank: null
+                }
+            };
 
-                conn.on('open', () => {
-                    hostConnection = conn;
-                    conn.send({
-                        type: 'JOIN_REQUEST',
-                        player: {
-                            id: state.playerId,
-                            name: state.playerName,
-                            isHost: false,
-                            progress: 0,
-                            finishTime: null,
-                            rank: null
-                        }
-                    });
-                });
+            // Switch to lobby immediately with clear connecting feedback
+            goToLobby();
+            document.getElementById('lobby-code-display').textContent = state.roomCode;
+            document.getElementById('host-only-grid-note').textContent = "Waiting for host to configure grid and initiate the race.";
+            document.getElementById('btn-start-race').classList.add('hidden');
+            updateLobbyStatus("Connecting to room " + state.roomCode + "...");
 
-                conn.on('data', (data) => handleGuestReceivedData(data));
-
-                conn.on('close', () => {
-                    showAlertModal("Host Disconnected", "The host has closed the room or lost connection.");
-                    goToMenu();
-                });
-
-                conn.on('error', (err) => {
-                    showAlertModal("Connection Failed", "Could not reach room: " + state.roomCode);
-                });
-            });
+            connectMqttBroker();
         }
 
-        function initPeerConnection(customId, onReady) {
-            stopPeerHeartbeat();
-            if (peerInstance) {
-                try { peerInstance.destroy(); } catch(e){}
-                peerInstance = null;
-            }
+        function connectMqttBroker() {
+            disconnectMqtt();
 
-            try {
-                peerInstance = customId ? new Peer(customId, PEER_CONFIG) : new Peer(PEER_CONFIG);
-            } catch(e) {
-                showAlertModal("Connection Error", "WebRTC failed to initialize: " + e.message);
+            if (typeof mqtt === 'undefined') {
+                updateLobbyStatus("⚠️ Network client loading... please wait a few seconds.");
+                setTimeout(connectMqttBroker, 1500);
                 return;
             }
 
-            peerInstance.on('open', (id) => {
-                startPeerHeartbeat();
-                if (onReady) onReady(id);
-            });
+            const brokerUrl = MQTT_BROKERS[activeBrokerIndex];
+            const clientOptions = {
+                clientId: 'mranti_' + Math.random().toString(36).substring(2, 10),
+                clean: true,
+                connectTimeout: 8000,
+                reconnectPeriod: 3000,
+                keepalive: 30
+            };
 
-            // Auto-reconnect silently if signaling drops; P2P gameplay remains unaffected
-            peerInstance.on('disconnected', () => {
-                if (peerInstance && !peerInstance.destroyed) {
-                    try { peerInstance.reconnect(); } catch(e) {}
-                }
-            });
+            try {
+                mqttClient = mqtt.connect(brokerUrl, clientOptions);
+            } catch(e) {
+                console.warn("MQTT connect exception:", e);
+                tryFallbackBroker();
+                return;
+            }
 
-            peerInstance.on('connection', (conn) => {
-                if (!state.isHost) return;
+            const roomTopic = `mranti_puzzle_race_v2/${state.roomCode}`;
 
-                conn.on('data', (data) => handleHostReceivedData(conn, data));
-
-                conn.on('close', () => {
-                    connections = connections.filter(c => c !== conn);
-                    for (let pid in state.players) {
-                        if (state.players[pid].conn === conn) {
-                            delete state.players[pid];
-                            break;
-                        }
+            mqttClient.on('connect', () => {
+                updateLobbyStatus("🟢 Room Online & Ready!", true);
+                
+                mqttClient.subscribe(roomTopic, { qos: 0 }, (err) => {
+                    if (err) {
+                        console.warn("Subscribe error:", err);
+                        return;
                     }
-                    broadcastRoomState();
-                    updateLobbyUI();
-                    updateLeaderboardUI();
-                });
-            });
-
-            peerInstance.on('error', (err) => {
-                console.warn("PeerJS network event:", err.type, err.message);
-
-                // 1. Benign signaling server drops or idle timeouts: recover silently
-                if (err.type === 'network' || (err.message && err.message.toLowerCase().includes('lost connection'))) {
-                    if (peerInstance && !peerInstance.destroyed) {
-                        try { peerInstance.reconnect(); } catch(e) {}
-                    }
-                    return;
-                }
-
-                // 2. ID collisions on host creation
-                if (err.type === 'unavailable-id') {
-                    if (state.isHost) {
-                        createMultiplayerRoom();
+                    if (!state.isHost) {
+                        // Request to join room
+                        sendMqttMessage({
+                            type: 'JOIN_REQUEST',
+                            player: {
+                                id: state.playerId,
+                                name: state.playerName,
+                                isHost: false,
+                                progress: 0,
+                                finishTime: null,
+                                rank: null
+                            }
+                        });
                     } else {
-                        showAlertModal("Room Error", "Room " + state.roomCode + " is busy or unavailable.");
+                        broadcastRoomState();
                     }
-                    return;
-                }
+                });
 
-                // 3. Room not found
-                if (err.type === 'peer-unavailable') {
-                    showAlertModal("Room Not Found", "Could not find Room '" + state.roomCode + "'. Please verify the 5-letter Room Code.", "🔍");
-                    return;
-                }
+                // Heartbeat to keep connection active
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = setInterval(() => {
+                    if (mqttClient && mqttClient.connected) {
+                        sendMqttMessage({ type: 'HEARTBEAT', playerId: state.playerId });
+                    }
+                }, 15000);
+            });
 
-                // 4. Critical errors only
-                if (err.type === 'browser-incompatible') {
-                    showAlertModal("Browser Not Supported", "Your browser does not support WebRTC DataChannels.");
-                } else if (err.type !== 'server-error') {
-                    showAlertModal("Network Alert", err.message || err.type);
+            mqttClient.on('message', (topic, payload) => {
+                if (topic !== roomTopic) return;
+                try {
+                    const data = JSON.parse(payload.toString());
+                    handleIncomingMqttMessage(data);
+                } catch(e) {
+                    console.error("Payload parse error:", e);
                 }
+            });
+
+            mqttClient.on('error', (err) => {
+                console.warn("MQTT Broker Error:", err);
+                tryFallbackBroker();
             });
         }
 
-        // ==========================================
-        // 7. WEBRTC MESSAGING PROTOCOL
-        // ==========================================
-        function broadcast(msg) {
-            connections.forEach(conn => {
-                if (conn && conn.open) {
-                    try {
-                        conn.send(msg);
-                    } catch(err) {
-                        console.warn("Failed sending to peer:", err);
-                    }
+        function tryFallbackBroker() {
+            activeBrokerIndex = (activeBrokerIndex + 1) % MQTT_BROKERS.length;
+            updateLobbyStatus("Retrying connection on backup server...");
+        }
+
+        function disconnectMqtt() {
+            clearInterval(heartbeatInterval);
+            if (mqttClient) {
+                try {
+                    mqttClient.end(true);
+                } catch(e) {}
+                mqttClient = null;
+            }
+        }
+
+        function sendMqttMessage(obj) {
+            if (mqttClient && mqttClient.connected && state.roomCode) {
+                try {
+                    const topic = `mranti_puzzle_race_v2/${state.roomCode}`;
+                    mqttClient.publish(topic, JSON.stringify(obj), { qos: 0 });
+                } catch(e) {
+                    console.warn("Publish failed:", e);
                 }
-            });
+            }
         }
 
         function broadcastRoomState() {
@@ -1130,7 +1114,7 @@
                 };
             }
 
-            broadcast({
+            sendMqttMessage({
                 type: 'ROOM_UPDATE',
                 gridSize: state.gridSize,
                 selectedImage: state.selectedImage,
@@ -1141,29 +1125,54 @@
             });
         }
 
-        function handleHostReceivedData(conn, data) {
-            if (data.type === 'JOIN_REQUEST') {
-                const currentCount = Object.keys(state.players).length;
-                if (currentCount >= 4) {
-                    conn.send({ type: 'JOIN_REJECT', reason: 'Room is full! Maximum 4 racers permitted.' });
-                    conn.close();
+        function handleIncomingMqttMessage(data) {
+            // Ignore messages from self
+            if (data.senderId === state.playerId) return;
+
+            if (data.type === 'JOIN_REQUEST' && state.isHost) {
+                const count = Object.keys(state.players).length;
+                if (count >= 4) {
+                    sendMqttMessage({ type: 'JOIN_REJECT', targetId: data.player.id, reason: 'Room is full (max 4 players)!' });
                     return;
                 }
-
-                const p = data.player;
-                p.conn = conn;
-                state.players[p.id] = p;
-                connections.push(conn);
-
-                conn.send({ type: 'JOIN_CONFIRMED', roomCode: state.roomCode });
+                state.players[data.player.id] = data.player;
                 broadcastRoomState();
                 updateLobbyUI();
                 playSound('correct');
             }
+            else if (data.type === 'JOIN_REJECT' && data.targetId === state.playerId) {
+                showAlertModal("Cannot Join", data.reason);
+                goToMenu();
+            }
+            else if (data.type === 'ROOM_UPDATE') {
+                state.gridSize = data.gridSize;
+                state.selectedImage = data.selectedImage;
+                state.selectedImageName = data.selectedImageName;
+                if (data.customImage) {
+                    state.customImage = data.customImage;
+                    state.customImageName = data.customImageName;
+                }
+                
+                // Merge player data preserving local state
+                for (let pid in data.players) {
+                    if (pid === state.playerId) {
+                        data.players[pid].name = state.playerName;
+                    }
+                }
+                state.players = data.players;
+
+                setGridSize(data.gridSize);
+                selectPuzzleImage(data.selectedImage, data.selectedImageName, !!data.customImage);
+                updateLobbyUI();
+                updateLeaderboardUI();
+                updateLobbyStatus("🟢 Ready with Host and Racers!", true);
+            }
+            else if (data.type === 'START_COUNTDOWN') {
+                executeSynchronizedStart(data);
+            }
             else if (data.type === 'PROGRESS_UPDATE') {
                 if (state.players[data.playerId]) {
                     state.players[data.playerId].progress = data.progress;
-                    broadcastRoomState();
                     updateLeaderboardUI();
                 }
             }
@@ -1178,41 +1187,8 @@
                     finishers.forEach((p, idx) => {
                         state.players[p.id].rank = idx + 1;
                     });
-
-                    broadcastRoomState();
                     updateLeaderboardUI();
                 }
-            }
-        }
-
-        function handleGuestReceivedData(data) {
-            if (data.type === 'JOIN_CONFIRMED') {
-                goToLobby();
-                document.getElementById('lobby-code-display').textContent = state.roomCode;
-                document.getElementById('host-only-grid-note').textContent = "Waiting for host to configure grid and initiate the race.";
-                document.getElementById('btn-start-race').classList.add('hidden');
-            }
-            else if (data.type === 'JOIN_REJECT') {
-                showAlertModal("Room Full", data.reason);
-                goToMenu();
-            }
-            else if (data.type === 'ROOM_UPDATE') {
-                state.gridSize = data.gridSize;
-                state.selectedImage = data.selectedImage;
-                state.selectedImageName = data.selectedImageName;
-                if (data.customImage) {
-                    state.customImage = data.customImage;
-                    state.customImageName = data.customImageName;
-                }
-                state.players = data.players;
-
-                setGridSize(data.gridSize);
-                selectPuzzleImage(data.selectedImage, data.selectedImageName, !!data.customImage);
-                updateLobbyUI();
-                updateLeaderboardUI();
-            }
-            else if (data.type === 'START_COUNTDOWN') {
-                executeSynchronizedStart(data);
             }
             else if (data.type === 'GOTO_LOBBY') {
                 goToLobby();
@@ -1220,10 +1196,11 @@
         }
 
         // ==========================================
-        // 8. LOBBY & RACERS RENDERING
+        // 7. LOBBY UI RENDERING
         // ==========================================
         function updateLobbyUI() {
             const container = document.getElementById('lobby-players-container');
+            if (!container) return;
             container.innerHTML = '';
             
             const playerList = Object.values(state.players);
@@ -1255,26 +1232,27 @@
 
         function copyRoomInvite() {
             const textToCopy = state.roomCode;
-            navigator.clipboard.writeText(textToCopy).then(() => {
-                const btn = document.getElementById('btn-copy-code');
-                const orig = btn.innerHTML;
-                btn.innerHTML = '✅ Copied!';
-                setTimeout(() => { btn.innerHTML = orig; }, 2000);
-            }).catch(() => {
-                prompt("Copy Room Code:", state.roomCode);
-            });
+            try {
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    const btn = document.getElementById('btn-copy-code');
+                    const orig = btn.innerHTML;
+                    btn.innerHTML = '✅ Copied!';
+                    setTimeout(() => { btn.innerHTML = orig; }, 2000);
+                }).catch(() => {
+                    prompt("Room Code:", state.roomCode);
+                });
+            } catch(e) {
+                prompt("Room Code:", state.roomCode);
+            }
             playSound('click');
         }
 
         // ==========================================
-        // 9. SOLO PRACTICE MODE
+        // 8. SOLO PRACTICE MODE
         // ==========================================
         function startSoloPractice() {
-            stopPeerHeartbeat();
-            if (peerInstance) {
-                try { peerInstance.destroy(); } catch(e){}
-                peerInstance = null;
-            }
+            playSound('click');
+            disconnectMqtt();
             state.isSolo = true;
             state.isHost = true;
             state.roomCode = 'SOLO';
@@ -1292,16 +1270,16 @@
             document.getElementById('lobby-code-display').textContent = 'SOLO';
             document.getElementById('host-only-grid-note').textContent = "Solo Practice Mode. You have full control over board settings.";
             document.getElementById('btn-start-race').classList.remove('hidden');
+            updateLobbyStatus("🟢 Offline Solo Practice Active", true);
         }
 
         // ==========================================
-        // 10. SYNCHRONIZED START & PUZZLE GENERATION
+        // 9. SYNCHRONIZED START & PUZZLE SHUFFLE
         // ==========================================
         function generateShuffleArray(size) {
             const total = size * size;
             let arr = Array.from({ length: total }, (_, i) => i);
             
-            // Fisher-Yates shuffle with guarantee it is never already solved
             let attempts = 0;
             do {
                 for (let i = total - 1; i > 0; i--) {
@@ -1311,7 +1289,6 @@
                 attempts++;
             } while (arr.every((v, i) => v === i) && attempts < 100);
 
-            // Double check for smaller grids (like 2x2 with only 4 tiles)
             if (arr.every((v, i) => v === i) && total > 1) {
                 [arr[0], arr[1]] = [arr[1], arr[0]];
             }
@@ -1335,7 +1312,7 @@
             };
 
             if (state.isHost && !state.isSolo) {
-                broadcast(payload);
+                sendMqttMessage(payload);
             }
             executeSynchronizedStart(payload);
         }
@@ -1390,7 +1367,7 @@
         }
 
         // ==========================================
-        // 11. PUZZLE BOARD RENDERING & INTERACTION
+        // 10. PUZZLE BOARD RENDERING & INTERACTION
         // ==========================================
         function buildPuzzleBoardGrid() {
             const board = document.getElementById('puzzle-board');
@@ -1471,7 +1448,7 @@
         }
 
         // ==========================================
-        // 12. PROGRESS TRACKING & VICTORY LOGIC
+        // 11. PROGRESS & VICTORY LOGIC
         // ==========================================
         function checkLocalProgress() {
             const total = state.gridSize * state.gridSize;
@@ -1489,15 +1466,11 @@
             }
 
             if (!state.isSolo) {
-                if (state.isHost) {
-                    broadcastRoomState();
-                } else if (hostConnection && hostConnection.open) {
-                    hostConnection.send({
-                        type: 'PROGRESS_UPDATE',
-                        playerId: state.playerId,
-                        progress: percentage
-                    });
-                }
+                sendMqttMessage({
+                    type: 'PROGRESS_UPDATE',
+                    playerId: state.playerId,
+                    progress: percentage
+                });
             }
             updateLeaderboardUI();
 
@@ -1528,22 +1501,11 @@
             }
 
             if (!state.isSolo) {
-                if (state.isHost) {
-                    const finishers = Object.values(state.players)
-                        .filter(p => p.finishTime !== null)
-                        .sort((a,b) => a.finishTime - b.finishTime);
-                    finishers.forEach((p, idx) => {
-                        state.players[p.id].rank = idx + 1;
-                    });
-                    broadcastRoomState();
-                    updateLeaderboardUI();
-                } else if (hostConnection && hostConnection.open) {
-                    hostConnection.send({
-                        type: 'PLAYER_FINISH',
-                        playerId: state.playerId,
-                        finishTime: finalTime
-                    });
-                }
+                sendMqttMessage({
+                    type: 'PLAYER_FINISH',
+                    playerId: state.playerId,
+                    finishTime: finalTime
+                });
             }
         }
 
@@ -1568,7 +1530,7 @@
         }
 
         // ==========================================
-        // 13. LIVE LEADERBOARD RENDERING
+        // 12. LIVE STANDINGS LEADERBOARD
         // ==========================================
         function updateLeaderboardUI() {
             const container = document.getElementById('live-leaderboard');
@@ -1621,7 +1583,7 @@
         }
 
         // ==========================================
-        // 14. MODAL DIALOG HELPERS
+        // 13. MODALS & DIALOGS
         // ==========================================
         function openPeekModal() {
             document.getElementById('modal-peek').classList.remove('hidden');
