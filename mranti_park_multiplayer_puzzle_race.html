@@ -255,16 +255,16 @@
                             </button>
                         </div>
 
-                        <!-- Picture Thumbnails Grid -->
-                        <div id="image-thumbnails" class="grid grid-cols-4 gap-2">
+                        <!-- Picture Thumbnails Grid (Includes 4 defaults + 1 custom slot) -->
+                        <div id="image-thumbnails" class="grid grid-cols-5 gap-2">
                             <!-- Injected dynamically -->
                         </div>
 
                         <!-- Active Image Info & Custom Upload Option -->
                         <div class="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800">
                             <span id="current-image-name" class="font-medium text-slate-300 truncate max-w-[200px]">MRANTI Tech Hive Campus</span>
-                            <label class="text-teal-400 hover:text-teal-300 cursor-pointer flex items-center gap-1">
-                                📁 Upload Custom
+                            <label class="text-teal-400 hover:text-teal-300 cursor-pointer flex items-center gap-1 font-semibold">
+                                <span id="upload-status-text">📁 Upload Custom</span>
                                 <input type="file" id="custom-image-input" accept="image/*" class="hidden">
                             </label>
                         </div>
@@ -456,6 +456,8 @@
             gridSize: 5, // 5 to 10
             selectedImage: MRANTI_IMAGES[0].url,
             selectedImageName: MRANTI_IMAGES[0].name,
+            customImage: null,
+            customImageName: null,
             showNumbers: false,
             soundEnabled: true,
 
@@ -611,23 +613,35 @@
             // Random photo button
             document.getElementById('btn-random-photo').addEventListener('click', () => {
                 if (!state.isHost && !state.isSolo) return;
-                const randomImg = MRANTI_IMAGES[Math.floor(Math.random() * MRANTI_IMAGES.length)];
-                selectPuzzleImage(randomImg.url, randomImg.name);
+                const pool = [...MRANTI_IMAGES];
+                if (state.customImage) {
+                    pool.push({ url: state.customImage, name: state.customImageName || 'Custom Photo' });
+                }
+                const randomImg = pool[Math.floor(Math.random() * pool.length)];
+                selectPuzzleImage(randomImg.url, randomImg.name, randomImg.url === state.customImage);
                 if (state.isHost) broadcastRoomState();
             });
 
-            // Custom photo upload
-            document.getElementById('custom-image-input').addEventListener('change', (e) => {
+            // Custom photo upload with automatic compression & optimization
+            const customInput = document.getElementById('custom-image-input');
+            customInput.addEventListener('change', (e) => {
                 if (!state.isHost && !state.isSolo) return;
                 const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        selectPuzzleImage(event.target.result, file.name);
-                        if (state.isHost) broadcastRoomState();
-                    };
-                    reader.readAsDataURL(file);
-                }
+                if (!file) return;
+
+                const statusEl = document.getElementById('upload-status-text');
+                if (statusEl) statusEl.textContent = '⏳ Optimizing...';
+
+                processAndOptimizeImage(file, (optimizedUrl) => {
+                    state.customImage = optimizedUrl;
+                    state.customImageName = file.name;
+                    selectPuzzleImage(optimizedUrl, "Custom: " + file.name, true);
+                    if (state.isHost) broadcastRoomState();
+                    if (statusEl) statusEl.textContent = '📁 Change Custom';
+                });
+
+                // Clear input value so same file can be re-selected if desired
+                customInput.value = '';
             });
 
             // Start Race button
@@ -650,18 +664,76 @@
         }
 
         // ==========================================
-        // 4. IMAGE GALLERY SETUP
+        // 4. IMAGE GALLERY SETUP & CLIENT OPTIMIZATION
         // ==========================================
+        // Automatically compresses and center-crops high-res uploads to an optimized 800x800 JPEG.
+        // This prevents WebRTC DataChannel packet overflow and ensures zero lag during the race.
+        function processAndOptimizeImage(file, callback) {
+            if (!file || !file.type.startsWith('image/')) {
+                showAlertModal("Invalid File", "Please select a valid image file (PNG, JPG, WEBP).", "⚠️");
+                const statusEl = document.getElementById('upload-status-text');
+                if (statusEl) statusEl.textContent = '📁 Upload Custom';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onerror = () => {
+                showAlertModal("Upload Error", "Failed to read the image file.", "❌");
+                const statusEl = document.getElementById('upload-status-text');
+                if (statusEl) statusEl.textContent = '📁 Upload Custom';
+            };
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onerror = () => {
+                    showAlertModal("Image Error", "Could not load or decode the image format.", "❌");
+                    const statusEl = document.getElementById('upload-status-text');
+                    if (statusEl) statusEl.textContent = '📁 Upload Custom';
+                };
+                img.onload = () => {
+                    try {
+                        const TARGET_SIZE = 800; // Optimal resolution for 5x5 up to 10x10 puzzle tiles
+                        const minDim = Math.min(img.width, img.height);
+                        const cropX = Math.round((img.width - minDim) / 2);
+                        const cropY = Math.round((img.height - minDim) / 2);
+
+                        const canvas = document.createElement('canvas');
+                        canvas.width = TARGET_SIZE;
+                        canvas.height = TARGET_SIZE;
+                        const ctx = canvas.getContext('2d');
+                        ctx.imageSmoothingEnabled = true;
+                        ctx.imageSmoothingQuality = 'high';
+
+                        // Center crop to 1:1 square so puzzle pieces are never stretched
+                        ctx.drawImage(img, cropX, cropY, minDim, minDim, 0, 0, TARGET_SIZE, TARGET_SIZE);
+
+                        // Export as high-quality lightweight JPEG (~60-90KB) for instant WebRTC transmission
+                        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+                        callback(compressedDataUrl);
+                    } catch (err) {
+                        console.error("Optimization error:", err);
+                        showAlertModal("Processing Failed", "Could not optimize image: " + err.message, "❌");
+                        const statusEl = document.getElementById('upload-status-text');
+                        if (statusEl) statusEl.textContent = '📁 Upload Custom';
+                    }
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
         function initImageGallery() {
             const container = document.getElementById('image-thumbnails');
+            if (!container) return;
             container.innerHTML = '';
 
+            // 1. Default MRANTI Images (Slots 1 to 4)
             MRANTI_IMAGES.forEach((item, index) => {
+                const isSelected = (state.selectedImage === item.url);
                 const div = document.createElement('div');
-                div.className = `thumbnail-item relative rounded-lg overflow-hidden border-2 cursor-pointer aspect-square transition transform hover:scale-105 ${item.url === state.selectedImage ? 'border-teal-400 ring-2 ring-teal-400/50' : 'border-slate-700 opacity-60 hover:opacity-100'}`;
+                div.className = `thumbnail-item relative rounded-lg overflow-hidden border-2 cursor-pointer aspect-square transition transform hover:scale-105 ${isSelected ? 'border-teal-400 ring-2 ring-teal-400/50 scale-105' : 'border-slate-700 opacity-60 hover:opacity-100'}`;
                 div.innerHTML = `
                     <img src="${item.url}" alt="${item.name}" class="w-full h-full object-cover">
-                    <div class="absolute inset-x-0 bottom-0 bg-slate-950/80 p-1 text-[9px] text-center font-medium truncate text-slate-200">
+                    <div class="absolute inset-x-0 bottom-0 bg-slate-950/80 p-0.5 text-[9px] text-center font-medium truncate text-slate-200">
                         #${index + 1}
                     </div>
                 `;
@@ -672,26 +744,46 @@
                 });
                 container.appendChild(div);
             });
+
+            // 2. Custom Upload Slot (Slot 5)
+            const customSlot = document.createElement('div');
+            const isCustomSelected = (state.customImage && state.selectedImage === state.customImage);
+
+            if (state.customImage) {
+                customSlot.className = `thumbnail-item relative rounded-lg overflow-hidden border-2 cursor-pointer aspect-square transition transform hover:scale-105 ${isCustomSelected ? 'border-teal-400 ring-2 ring-teal-400/50 scale-105' : 'border-slate-700 opacity-60 hover:opacity-100'}`;
+                customSlot.innerHTML = `
+                    <img src="${state.customImage}" alt="Custom" class="w-full h-full object-cover">
+                    <div class="absolute inset-x-0 bottom-0 bg-teal-950/90 p-0.5 text-[9px] text-center font-bold text-teal-300 truncate">
+                        Custom ★
+                    </div>
+                `;
+                customSlot.addEventListener('click', () => {
+                    if (!state.isHost && !state.isSolo) return;
+                    selectPuzzleImage(state.customImage, state.customImageName || 'Custom Photo', true);
+                    if (state.isHost) broadcastRoomState();
+                });
+            } else {
+                customSlot.className = `thumbnail-item relative rounded-lg border-2 border-dashed border-slate-700 hover:border-teal-400 flex flex-col items-center justify-center cursor-pointer aspect-square transition bg-slate-900/40 hover:bg-slate-800/60 p-1 text-center group`;
+                customSlot.innerHTML = `
+                    <span class="text-sm group-hover:scale-110 transition-transform">➕</span>
+                    <span class="text-[8px] text-slate-400 group-hover:text-teal-300 font-semibold mt-0.5 leading-tight">Upload</span>
+                `;
+                customSlot.addEventListener('click', () => {
+                    if (!state.isHost && !state.isSolo) return;
+                    document.getElementById('custom-image-input').click();
+                });
+            }
+            container.appendChild(customSlot);
         }
 
-        function selectPuzzleImage(url, name) {
+        function selectPuzzleImage(url, name, isCustom = false) {
             state.selectedImage = url;
             state.selectedImageName = name;
             document.getElementById('current-image-name').textContent = name;
             document.getElementById('peek-modal-img').src = url;
             document.getElementById('peek-modal-title').textContent = name;
 
-            // Highlight thumbnail
-            const items = document.querySelectorAll('.thumbnail-item');
-            MRANTI_IMAGES.forEach((item, i) => {
-                if (items[i]) {
-                    if (item.url === url) {
-                        items[i].className = 'thumbnail-item relative rounded-lg overflow-hidden border-2 cursor-pointer aspect-square transition transform hover:scale-105 border-teal-400 ring-2 ring-teal-400/50';
-                    } else {
-                        items[i].className = 'thumbnail-item relative rounded-lg overflow-hidden border-2 cursor-pointer aspect-square transition transform hover:scale-105 border-slate-700 opacity-60 hover:opacity-100';
-                    }
-                }
-            });
+            initImageGallery();
             playSound('click');
         }
 
@@ -906,6 +998,8 @@
                 gridSize: state.gridSize,
                 selectedImage: state.selectedImage,
                 selectedImageName: state.selectedImageName,
+                customImage: state.customImage,
+                customImageName: state.customImageName,
                 players: sanitizedPlayers
             });
         }
@@ -972,10 +1066,14 @@
                 state.gridSize = data.gridSize;
                 state.selectedImage = data.selectedImage;
                 state.selectedImageName = data.selectedImageName;
+                if (data.customImage) {
+                    state.customImage = data.customImage;
+                    state.customImageName = data.customImageName;
+                }
                 state.players = data.players;
 
                 setGridSize(data.gridSize);
-                selectPuzzleImage(data.selectedImage, data.selectedImageName);
+                selectPuzzleImage(data.selectedImage, data.selectedImageName, !!data.customImage);
                 updateLobbyUI();
                 updateLeaderboardUI();
             }
