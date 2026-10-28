@@ -228,7 +228,7 @@
                 <!-- Left Column: Settings & Picture Selection (7 cols) -->
                 <div class="lg:col-span-7 space-y-5">
                     
-                    <!-- Board Dimension Selector (5x5 to 10x10) -->
+                    <!-- Board Dimension Selector (2x2 to 10x10) -->
                     <div class="glass-panel p-4 rounded-xl space-y-3">
                         <div class="flex justify-between items-center">
                             <label class="text-xs font-bold text-slate-200 uppercase tracking-wider">Difficulty & Grid Size</label>
@@ -236,13 +236,16 @@
                         </div>
                         
                         <!-- Grid Size selector buttons -->
-                        <div id="grid-selector-container" class="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                            <button data-size="5" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-sm transition bg-teal-600/20 border-teal-500 text-teal-300">5×5</button>
-                            <button data-size="6" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">6×6</button>
-                            <button data-size="7" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">7×7</button>
-                            <button data-size="8" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">8×8</button>
-                            <button data-size="9" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">9×9</button>
-                            <button data-size="10" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">10×10</button>
+                        <div id="grid-selector-container" class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-1.5">
+                            <button data-size="2" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">2×2</button>
+                            <button data-size="3" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">3×3</button>
+                            <button data-size="4" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">4×4</button>
+                            <button data-size="5" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-teal-600/20 border-teal-500 text-teal-300">5×5</button>
+                            <button data-size="6" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">6×6</button>
+                            <button data-size="7" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">7×7</button>
+                            <button data-size="8" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">8×8</button>
+                            <button data-size="9" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">9×9</button>
+                            <button data-size="10" class="grid-btn py-2 text-center rounded-lg border font-mono font-bold text-xs sm:text-sm transition bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">10×10</button>
                         </div>
                         <p id="host-only-grid-note" class="text-[11px] text-slate-400">Host controls the grid size for all participants.</p>
                     </div>
@@ -1223,18 +1226,21 @@
         // ==========================================
         function generateShuffleArray(size) {
             const total = size * size;
-            const arr = Array.from({ length: total }, (_, i) => i);
+            let arr = Array.from({ length: total }, (_, i) => i);
             
-            // Fisher-Yates shuffle
-            for (let i = total - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [arr[i], arr[j]] = [arr[j], arr[i]];
-            }
+            // Fisher-Yates shuffle with guarantee it is never already solved
+            let attempts = 0;
+            do {
+                for (let i = total - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [arr[i], arr[j]] = [arr[j], arr[i]];
+                }
+                attempts++;
+            } while (arr.every((v, i) => v === i) && attempts < 100);
 
-            // Ensure not accidentally already solved
-            let matched = arr.filter((v, i) => v === i).length;
-            if (matched > total * 0.2) {
-                [arr[0], arr[total - 1]] = [arr[total - 1], arr[0]];
+            // Double check for smaller grids (like 2x2 with only 4 tiles)
+            if (arr.every((v, i) => v === i) && total > 1) {
+                [arr[0], arr[1]] = [arr[1], arr[0]];
             }
             return arr;
         }
